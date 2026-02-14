@@ -2,17 +2,17 @@ import { useState } from "react";
 import { useParams, useNavigate, Link, useLocation } from "react-router";
 import { PublicHeader } from "../components/PublicHeader";
 import { mockJobs, mockApplications } from "../lib/mockData";
-import { useAuth } from "../contexts/AuthContext";
 import { Calendar, Briefcase, ArrowLeft, Check, Edit } from "lucide-react";
 import Client_ROUTEMAP from "../misc/Client_ROUTEMAP";
 import Navbar from "../components/Navbar";
 import { ShareButton } from "../components/ShareButton";
+import { useUserContext } from "@/contexts/UserContext";
 
 export default function JobDetail() {
   const { jobId: id } = useParams<{ jobId: string }>();
   const navigate = useNavigate();
   const location = useLocation();
-  const { user } = useAuth();
+  const { user } = useUserContext();
   const [isApplying, setIsApplying] = useState(false);
   const [applied, setApplied] = useState(false);
 
@@ -47,7 +47,7 @@ export default function JobDetail() {
     user &&
     user.role === "candidate" &&
     mockApplications.some(
-      (app) => app.jobId === job.id && app.candidateId === user.id,
+      (app) => app.jobId === job.id && app.candidateId === user.id.toString(),
     );
 
   const handleApply = () => {
@@ -62,7 +62,7 @@ export default function JobDetail() {
       mockApplications.push({
         id: `app-${Date.now()}`,
         jobId: job.id,
-        candidateId: user.id,
+        candidateId: user.id.toString(),
         status: "applied",
         appliedAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
@@ -91,7 +91,7 @@ export default function JobDetail() {
           <div className="mb-8 pb-8 border-b border-gray-200">
             <div className="flex justify-between items-center">
               <h1 className="text-3xl text-gray-900 mb-4">{job.title}</h1>
-              {user && job.hrId === user.id && (
+              {user && job.hrId === user.id.toString() && (
                 <Link
                   to={`${Client_ROUTEMAP.hr.root}/${Client_ROUTEMAP.hr.editJob.replace(
                     Client_ROUTEMAP.hr._params.jobId,

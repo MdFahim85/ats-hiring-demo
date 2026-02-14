@@ -1,3 +1,5 @@
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import toast from "react-hot-toast";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -9,27 +11,42 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { mockHRUsers } from "@/lib/mockData";
-import { useState } from "react";
 import { Trash } from "lucide-react";
+import { modifiedFetch } from "@/misc/modifiedFetch";
+import Server_ROUTEMAP from "@/misc/Server_ROUTEMAP";
 
-export function DeleteHRUserModal({ hrId }: { hrId: string | null }) {
-  const [modalOpen, setModalOpen] = useState(false);
+import type { deleteHr } from "@backend/controllers/admin";
+import type { GetRes } from "@backend/types/req-res";
 
-  const handleDelete = () => {
-    if (hrId) {
-      const hrIndex = mockHRUsers.findIndex((h) => h.id === hrId);
-      if (hrIndex !== -1) {
-        mockHRUsers.splice(hrIndex, 1);
-      }
-    }
-    setModalOpen(false);
-  };
+export function DeleteHRUserModal({ hrId }: { hrId: number }) {
+  const queryClient = useQueryClient();
+
+  const { mutate: deleteHRUser, isPending } = useMutation({
+    mutationFn: () =>
+      modifiedFetch<GetRes<typeof deleteHr>>(
+        Server_ROUTEMAP.admin.root +
+          Server_ROUTEMAP.admin.deleteHr.replace(
+            Server_ROUTEMAP.admin._params.hrId,
+            hrId.toString(),
+          ),
+        { method: "delete" },
+      ),
+    onSuccess: (data) => {
+      if (data) toast.success(data.message);
+
+      queryClient.invalidateQueries({
+        queryKey: [Server_ROUTEMAP.users.root + Server_ROUTEMAP.users.get],
+      });
+    },
+    onError: (error) => {
+      toast.error(error.message);
+    },
+  });
 
   return (
-    <AlertDialog open={modalOpen} onOpenChange={setModalOpen}>
+    <AlertDialog>
       <AlertDialogTrigger asChild>
-        <div className="text-md flex gap-2">
+        <div className="text-md flex gap-2 cursor-pointer text-red-600 hover:text-red-700">
           <Trash className="w-5 h-5" /> Delete
         </div>
       </AlertDialogTrigger>
@@ -44,10 +61,11 @@ export function DeleteHRUserModal({ hrId }: { hrId: string | null }) {
         <AlertDialogFooter>
           <AlertDialogCancel>Cancel</AlertDialogCancel>
           <AlertDialogAction
-            onClick={handleDelete}
+            onClick={() => deleteHRUser()}
+            disabled={isPending}
             className="bg-red-600 hover:bg-red-700"
           >
-            Delete
+            {isPending ? "Deleting..." : "Delete"}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

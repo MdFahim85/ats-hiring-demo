@@ -1,31 +1,27 @@
-import { useEffect, useState, type ChangeEventHandler } from "react";
-import { Link, useNavigate } from "react-router";
+import { useState, type ChangeEventHandler } from "react";
+import { Link } from "react-router";
 import { Briefcase, Eye, EyeOff } from "lucide-react";
-import { useAuth } from "../../contexts/AuthContext";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import toast from "react-hot-toast";
+
 import Client_ROUTEMAP from "../../misc/Client_ROUTEMAP";
+import Server_ROUTEMAP from "../../misc/Server_ROUTEMAP";
+import { modifiedFetch } from "../../misc/modifiedFetch.ts";
+import Form from "@/components/shared/Form.tsx";
 
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 
-type LoginUser = {
-  email: string;
-  password: string;
-};
-
-const initialState: LoginUser = {
-  email: "",
-  password: "",
-};
+import type { userLogin } from "@backend/controllers/user";
+import type { GetReqBody, GetRes } from "@backend/types/req-res";
+import { initialUserLoginState } from "@/misc/initialStates.ts";
 
 export default function Login() {
-  const [userData, setUserData] = useState<LoginUser>(initialState);
+  const [userData, setUserData] = useState(initialUserLoginState);
   const [showPassword, setShowPassword] = useState(false);
-  const [error, setError] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
 
-  const { login, user } = useAuth();
-  const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
   const onChange: ChangeEventHandler<HTMLInputElement> = ({
     target: { id, value },
@@ -33,41 +29,33 @@ export default function Login() {
     setUserData((prev) => ({ ...prev, [id]: value }));
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError("");
-    setIsLoading(true);
+  const {
+    mutate: loginUser,
+    isPending: isLoggingIn,
+    isError,
+    error,
+  } = useMutation({
+    mutationFn: () =>
+      modifiedFetch<GetRes<typeof userLogin>>(
+        Server_ROUTEMAP.users.root + Server_ROUTEMAP.users.userLogin,
+        {
+          method: "post",
+          body: JSON.stringify(userData satisfies GetReqBody<typeof userLogin>),
+        },
+      ),
 
-    const success = await login(userData.email, userData.password);
-    setIsLoading(false);
+    onSuccess: (data) => {
+      if (data?.message) toast.success(data.message);
 
-    if (!success) {
-      setError("Invalid email or password");
-    }
-  };
+      queryClient.invalidateQueries({
+        queryKey: [Server_ROUTEMAP.users.root + Server_ROUTEMAP.users.self],
+      });
+    },
 
-  useEffect(() => {
-    if (!user) return;
-
-    switch (user.role) {
-      case "admin":
-        navigate(
-          `${Client_ROUTEMAP.admin.root}/${Client_ROUTEMAP.admin.dashboard}`,
-        );
-        break;
-      case "hr":
-        navigate(`${Client_ROUTEMAP.hr.root}/${Client_ROUTEMAP.hr.dashboard}`);
-        break;
-      case "candidate":
-        navigate(
-          `${Client_ROUTEMAP.candidate.root}/${Client_ROUTEMAP.candidate.dashboard}`,
-        );
-        break;
-      default:
-        // eslint-disable-next-line react-hooks/set-state-in-effect
-        setError("Unknown user role");
-    }
-  }, [user, navigate]);
+    onError: (error) => {
+      error.message?.split(",")?.forEach((err: string) => toast.error(err));
+    },
+  });
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
@@ -94,10 +82,19 @@ export default function Login() {
 
       <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
         <div className="bg-white py-8 px-4 shadow-sm border border-gray-200 rounded-lg sm:px-10">
-          <form onSubmit={handleSubmit} className="space-y-6">
-            {error && (
+          <Form
+            onSubmit={() => {
+              loginUser();
+            }}
+            className="space-y-6"
+          >
+            {isError && (
               <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
-                <p className="text-sm text-red-700">{error}</p>
+                {error?.message?.split(",")?.map((err: string, i: number) => (
+                  <p key={i} className="text-sm text-red-700">
+                    {err}
+                  </p>
+                ))}
               </div>
             )}
 
@@ -111,6 +108,7 @@ export default function Login() {
                 value={userData.email}
                 onChange={onChange}
                 placeholder="Enter your email"
+                className={isError ? "border-red-500" : ""}
               />
             </div>
 
@@ -125,7 +123,7 @@ export default function Login() {
                   value={userData.password}
                   onChange={onChange}
                   placeholder="••••••••"
-                  className="pr-10"
+                  className={`pr-10 ${isError ? "border-red-500" : ""}`}
                 />
                 <button
                   type="button"
@@ -139,12 +137,12 @@ export default function Login() {
 
             <Button
               type="submit"
-              disabled={isLoading}
+              disabled={initialUserLoginState === userData || isLoggingIn}
               className="w-full bg-blue-600 hover:bg-blue-700"
             >
-              {isLoading ? "Signing in..." : "Sign in"}
+              {isLoggingIn ? "Signing in..." : "Sign in"}
             </Button>
-          </form>
+          </Form>
 
           {/* Demo credentials */}
           <div className="mt-6 p-4 bg-blue-50 rounded-lg space-y-2 text-xs">
@@ -157,7 +155,7 @@ export default function Login() {
                 <strong>HR:</strong> sarah.hr@company.com | password123
               </p>
               <p className="text-blue-700">
-                <strong>Admin:</strong> admin@company.com | password123
+                <strong>Admin:</strong> admin@test.com | password123
               </p>
             </div>
           </div>

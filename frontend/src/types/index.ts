@@ -32,7 +32,6 @@ export interface Job {
   status: "draft" | "active" | "closed";
   hrId: string;
   createdAt: string;
-  applicantCount: number;
 }
 
 export interface Application {

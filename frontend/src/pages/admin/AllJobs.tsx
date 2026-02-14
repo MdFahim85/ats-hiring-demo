@@ -1,9 +1,9 @@
 import { useState, useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router";
 import { ProtectedRoute } from "../../components/ProtectedRoute";
 import { DashboardLayout } from "../../components/DashboardLayout";
 import { StatusBadge } from "../../components/StatusBadge";
-import { mockJobs } from "../../lib/mockData";
 import { Users, ArrowLeft, ArrowRight, Plus } from "lucide-react";
 import Client_ROUTEMAP from "../../misc/Client_ROUTEMAP";
 import { Button } from "@/components/ui/button";
@@ -24,17 +24,27 @@ import {
   flexRender,
 } from "@tanstack/react-table";
 import { Input } from "@/components/ui/input";
+import Loading from "@/components/shared/Loading";
+import { modifiedFetch } from "@/misc/modifiedFetch";
+import Server_ROUTEMAP from "@/misc/Server_ROUTEMAP";
 
-const columnHelper = createColumnHelper<(typeof mockJobs)[0]>();
+import type { getAllJobs } from "@backend/controllers/job";
+import type { getAllApplications } from "@backend/controllers/application";
+import type { Job } from "@backend/models/Job";
+import type { GetRes } from "@backend/types/req-res";
 
-function JobsTable({ jobs }: { jobs: typeof mockJobs }) {
+type JobWithCount = Job & { applicantCount: number };
+
+const columnHelper = createColumnHelper<JobWithCount>();
+
+function JobsTable({ jobs }: { jobs: JobWithCount[] }) {
   const columns = useMemo(
     () => [
       columnHelper.accessor("title", {
         header: "Job Title",
         cell: (info) => (
           <Link
-            to={`${Client_ROUTEMAP.public.root}/${Client_ROUTEMAP.public.jobDetails.replace(Client_ROUTEMAP.public._params.jobId, info.row.original.id)}`}
+            to={`${Client_ROUTEMAP.public.root}/${Client_ROUTEMAP.public.jobDetails.replace(Client_ROUTEMAP.public._params.jobId, info.row.original.id.toString())}`}
             className="text-gray-900 hover:underline"
           >
             {info.getValue()}
@@ -178,8 +188,37 @@ function AllJobsContent() {
     "all" | "active" | "closed" | "draft"
   >("all");
 
+  const { data: jobs, isLoading: isJobsLoading } = useQuery({
+    queryKey: [Server_ROUTEMAP.jobs.root + Server_ROUTEMAP.jobs.get],
+    queryFn: () =>
+      modifiedFetch<GetRes<typeof getAllJobs>>(
+        Server_ROUTEMAP.jobs.root + Server_ROUTEMAP.jobs.get,
+      ),
+    retry: false,
+  });
+
+  const { data: applications, isLoading: isApplicationsLoading } = useQuery({
+    queryKey: [
+      Server_ROUTEMAP.applications.root + Server_ROUTEMAP.applications.get,
+    ],
+    queryFn: () =>
+      modifiedFetch<GetRes<typeof getAllApplications>>(
+        Server_ROUTEMAP.applications.root + Server_ROUTEMAP.applications.get,
+      ),
+    retry: false,
+  });
+
+  const jobsWithCount = useMemo(() => {
+    if (!jobs || !applications) return [];
+
+    return jobs.map((job) => ({
+      ...job,
+      applicantCount: applications.filter((app) => app.jobId === job.id).length,
+    }));
+  }, [jobs, applications]);
+
   const filteredJobs = useMemo(() => {
-    return mockJobs
+    return jobsWithCount
       .filter((job) => {
         const matchesSearch =
           job.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -192,7 +231,9 @@ function AllJobsContent() {
         (a, b) =>
           new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
       );
-  }, [searchTerm, statusFilter]);
+  }, [jobsWithCount, searchTerm, statusFilter]);
+
+  if (isJobsLoading || isApplicationsLoading) return <Loading />;
 
   return (
     <DashboardLayout>

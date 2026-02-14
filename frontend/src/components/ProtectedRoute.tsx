@@ -1,14 +1,31 @@
 import { Navigate, useLocation } from "react-router";
-import { useAuth } from "../contexts/AuthContext";
+
 import Client_ROUTEMAP from "../misc/Client_ROUTEMAP";
 import type { UserRole } from "@/types";
+import { useUserContext } from "@/contexts/UserContext";
+import Loading from "./shared/Loading";
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
-  allowedRoles: UserRole[];
+  allowedRoles?: UserRole[];
   allowLoggedInOnly?: boolean;
   allowLoggedOutOnly?: boolean;
 }
+
+const getDashboardByRole = (role: UserRole) => {
+  switch (role) {
+    case "admin":
+      return `${Client_ROUTEMAP.admin.root}/${Client_ROUTEMAP.admin.index}`;
+    case "hr":
+      return `${Client_ROUTEMAP.hr.root}/${Client_ROUTEMAP.hr.index}`;
+
+    case "candidate":
+      return `${Client_ROUTEMAP.candidate.root}/${Client_ROUTEMAP.candidate.index}`;
+
+    default:
+      return Client_ROUTEMAP.public.root;
+  }
+};
 
 export function ProtectedRoute({
   children,
@@ -16,42 +33,34 @@ export function ProtectedRoute({
   allowLoggedInOnly,
   allowLoggedOutOnly,
 }: ProtectedRouteProps) {
-  const { user, isLoading } = useAuth();
-
+  const { user, isLoading } = useUserContext();
   const location = useLocation();
 
   if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-      </div>
-    );
+    return <Loading />;
+  }
+
+  if (user) {
+    if (allowLoggedOutOnly) {
+      const destination = location.state?.from ?? getDashboardByRole(user.role);
+      return <Navigate to={destination} replace />;
+    }
+
+    if (allowedRoles && !allowedRoles.includes(user.role)) {
+      return <Navigate to={Client_ROUTEMAP.utility.unauthorized} replace />;
+    }
   }
 
   if (!user) {
-    return <Navigate to={Client_ROUTEMAP._.root} replace />;
-  }
-
-  if (!user && allowLoggedInOnly)
-    return (
-      <Navigate
-        to={Client_ROUTEMAP.auth.root + "/" + Client_ROUTEMAP.auth.login}
-        state={{ from: location.pathname + location.search }}
-        replace
-      />
-    );
-
-  if (user && allowLoggedOutOnly) {
-    return (
-      <Navigate
-        to={location.state?.from ?? Client_ROUTEMAP.public.root}
-        replace
-      />
-    );
-  }
-
-  if (!allowedRoles.includes(user.role)) {
-    return <Navigate to={Client_ROUTEMAP.utility.unauthorized} replace />;
+    if (allowLoggedInOnly) {
+      return (
+        <Navigate
+          to={Client_ROUTEMAP.auth.root + "/" + Client_ROUTEMAP.auth.login}
+          state={{ from: location.pathname + location.search }}
+          replace
+        />
+      );
+    }
   }
 
   return <>{children}</>;

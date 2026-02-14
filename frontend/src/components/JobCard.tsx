@@ -1,5 +1,4 @@
 import { Link } from "react-router";
-import type { Job } from "../types";
 import { Calendar, Briefcase } from "lucide-react";
 import Client_ROUTEMAP from "../misc/Client_ROUTEMAP";
 import {
@@ -9,6 +8,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import type { Job } from "@backend/models/Job";
 
 interface JobCardProps {
   job: Job;
@@ -47,7 +47,7 @@ export function JobCard({ job }: JobCardProps) {
         <Link
           to={`${Client_ROUTEMAP.public.root}/${Client_ROUTEMAP.public.jobDetails.replace(
             Client_ROUTEMAP.public._params.jobId,
-            job.id,
+            job.id.toString(),
           )}`}
           className="inline-flex items-center text-sm text-blue-600 hover:text-blue-700"
         >

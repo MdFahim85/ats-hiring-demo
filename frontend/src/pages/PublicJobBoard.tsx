@@ -1,5 +1,6 @@
 import { Search } from "lucide-react";
 import { useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 
 import {
   Select,
@@ -13,34 +14,54 @@ import { Input } from "@/components/ui/input";
 import { JobCard } from "../components/JobCard";
 import Navbar from "../components/Navbar";
 import { PublicHeader } from "../components/PublicHeader";
-import { useAuth } from "../contexts/AuthContext";
-import { mockJobs } from "../lib/mockData";
+import { useUserContext } from "@/contexts/UserContext";
+import Loading from "@/components/shared/Loading";
+
+import { modifiedFetch } from "@/misc/modifiedFetch";
+import Server_ROUTEMAP from "@/misc/Server_ROUTEMAP";
+
+import type { getPublicJobs } from "@backend/controllers/job";
+import type { GetRes } from "@backend/types/req-res";
 
 export default function PublicJobBoard() {
-  const { user } = useAuth();
+  const { user } = useUserContext();
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedDepartment, setSelectedDepartment] = useState("all");
 
-  // Get unique departments
+  /* ===== Fetch Public Jobs ===== */
+  const { data: jobs, isLoading } = useQuery({
+    queryKey: [Server_ROUTEMAP.jobs.root + Server_ROUTEMAP.jobs.getPublic],
+    queryFn: () =>
+      modifiedFetch<GetRes<typeof getPublicJobs>>(
+        Server_ROUTEMAP.jobs.root + Server_ROUTEMAP.jobs.getPublic,
+      ),
+    retry: false,
+  });
+
+  /* ===== Departments ===== */
   const departments = useMemo(() => {
-    const depts = new Set(mockJobs.map((job) => job.department));
+    if (!jobs) return ["all"];
+    const depts = new Set(jobs.map((job) => job.department));
     return ["all", ...Array.from(depts)];
-  }, []);
+  }, [jobs]);
 
-  // Filter jobs
+  /* ===== Filtered Jobs ===== */
   const filteredJobs = useMemo(() => {
-    return mockJobs.filter((job) => {
-      if (job.status !== "active") return false;
+    if (!jobs) return [];
 
+    return jobs.filter((job) => {
       const matchesSearch =
         job.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
         job.description.toLowerCase().includes(searchTerm.toLowerCase());
+
       const matchesDepartment =
         selectedDepartment === "all" || job.department === selectedDepartment;
 
       return matchesSearch && matchesDepartment;
     });
-  }, [searchTerm, selectedDepartment]);
+  }, [jobs, searchTerm, selectedDepartment]);
+
+  if (isLoading) return <Loading />;
 
   return (
     <div className="min-h-screen bg-gray-50">

@@ -1,8 +1,8 @@
-import { useState, useMemo, type SyntheticEvent } from "react";
+import { useState, useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { ProtectedRoute } from "../../components/ProtectedRoute";
 import { DashboardLayout } from "../../components/DashboardLayout";
 import { StatusBadge } from "../../components/StatusBadge";
-import { mockHRUsers } from "../../lib/mockData";
 import { Plus, ArrowLeft, ArrowRight, MoreHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -31,15 +31,22 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import Loading from "@/components/shared/Loading";
+import { modifiedFetch } from "@/misc/modifiedFetch";
+import Server_ROUTEMAP from "@/misc/Server_ROUTEMAP";
 
-const columnHelper = createColumnHelper<(typeof mockHRUsers)[0]>();
+import type { getAllUsers } from "@backend/controllers/user";
+import type { User } from "@backend/models/User";
+import type { GetRes } from "@backend/types/req-res";
+
+const columnHelper = createColumnHelper<User>();
 
 function HRTable({
   hrUsers,
   onToggleStatus,
 }: {
-  hrUsers: typeof mockHRUsers;
-  onToggleStatus: (hrId: string) => void;
+  hrUsers: User[];
+  onToggleStatus: (hrId: number) => void;
 }) {
   const columns = useMemo(
     () => [
@@ -58,7 +65,7 @@ function HRTable({
       columnHelper.accessor("department", {
         header: "Department",
         cell: (info) => (
-          <span className="text-gray-600">{info.getValue()}</span>
+          <span className="text-gray-600">{info.getValue() || "-"}</span>
         ),
       }),
       columnHelper.accessor("status", {
@@ -87,11 +94,7 @@ function HRTable({
 
             <DropdownMenuContent align="start">
               {/* Edit HR User */}
-              <DropdownMenuItem
-                onSelect={(
-                  e: SyntheticEvent<HTMLInputElement | HTMLTextAreaElement>,
-                ) => e.preventDefault()}
-              >
+              <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
                 <EditHRUserModal hrId={info.row.original.id} />
               </DropdownMenuItem>
 
@@ -112,11 +115,7 @@ function HRTable({
               </DropdownMenuItem>
 
               {/* Delete HR User */}
-              <DropdownMenuItem
-                onSelect={(
-                  e: SyntheticEvent<HTMLInputElement | HTMLTextAreaElement>,
-                ) => e.preventDefault()}
-              >
+              <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
                 <DeleteHRUserModal hrId={info.row.original.id} />
               </DropdownMenuItem>
             </DropdownMenuContent>
@@ -230,17 +229,32 @@ function HRTable({
 
 function HRManagementContent() {
   const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "draft">(
+  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "closed">(
     "all",
   );
 
+  const { data: allUsers, isLoading } = useQuery({
+    queryKey: [Server_ROUTEMAP.users.root + Server_ROUTEMAP.users.get],
+    queryFn: () =>
+      modifiedFetch<GetRes<typeof getAllUsers>>(
+        Server_ROUTEMAP.users.root + Server_ROUTEMAP.users.get,
+      ),
+    retry: false,
+  });
+
+  const hrUsers = useMemo(() => {
+    if (!allUsers) return [];
+    return allUsers.filter((u) => u.role === "hr") as User[];
+  }, [allUsers]);
+
   const filteredHRUsers = useMemo(() => {
-    return mockHRUsers
+    return hrUsers
       .filter((hr) => {
         const matchesSearch =
           hr.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
           hr.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          hr.department.toLowerCase().includes(searchTerm.toLowerCase());
+          (hr.department &&
+            hr.department.toLowerCase().includes(searchTerm.toLowerCase()));
         const matchesStatus =
           statusFilter === "all" || hr.status === statusFilter;
         return matchesSearch && matchesStatus;
@@ -249,14 +263,14 @@ function HRManagementContent() {
         (a, b) =>
           new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
       );
-  }, [searchTerm, statusFilter]);
+  }, [hrUsers, searchTerm, statusFilter]);
 
-  const handleToggleStatus = (hrId: string) => {
-    const hr = mockHRUsers.find((h) => h.id === hrId);
-    if (hr) {
-      hr.status = hr.status === "active" ? "draft" : "active";
-    }
+  const handleToggleStatus = (hrId: number) => {
+    // This will be handled by the mutation in the modal/action
+    console.log("Toggle status for HR:", hrId);
   };
+
+  if (isLoading) return <Loading />;
 
   return (
     <DashboardLayout>
@@ -280,7 +294,7 @@ function HRManagementContent() {
           />
 
           <div className="flex flex-wrap gap-2">
-            {(["all", "active", "draft"] as const).map((status) => (
+            {(["all", "active", "closed"] as const).map((status) => (
               <Button
                 key={status}
                 size="sm"

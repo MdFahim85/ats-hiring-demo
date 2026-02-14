@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import toast from "react-hot-toast";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -17,42 +19,56 @@ import {
   SelectItem,
 } from "@/components/ui/select";
 import { Plus } from "lucide-react";
-import { mockHRUsers, mockUsers } from "@/lib/mockData";
+import { modifiedFetch } from "@/misc/modifiedFetch";
+import Server_ROUTEMAP from "@/misc/Server_ROUTEMAP";
+
+import type { createHr } from "@backend/controllers/admin";
+import type { GetReqBody, GetRes } from "@backend/types/req-res";
+
+const initialHRUserState = {
+  name: "",
+  email: "",
+  password: "",
+  role: "hr" as const,
+  phone: "",
+  department: "",
+  profilePicture: "",
+  status: "active" as const,
+  createdAt: new Date(),
+};
 
 export function AddHRUserModal() {
+  const queryClient = useQueryClient();
   const [modalOpen, setModalOpen] = useState(false);
-  const [formData, setFormData] = useState({
-    name: "",
-    email: "",
-    department: "",
-    password: "",
+  const [formData, setFormData] = useState(initialHRUserState);
+
+  const { mutate: createHRUser, isPending } = useMutation({
+    mutationFn: () => {
+      return modifiedFetch<GetRes<typeof createHr>>(
+        Server_ROUTEMAP.admin.root + Server_ROUTEMAP.admin.createHr,
+        {
+          method: "post",
+          body: JSON.stringify(formData satisfies GetReqBody<typeof createHr>),
+        },
+      );
+    },
+    onSuccess: (data) => {
+      if (data) toast.success(data.message);
+
+      queryClient.invalidateQueries({
+        queryKey: [Server_ROUTEMAP.users.root + Server_ROUTEMAP.users.get],
+      });
+
+      setFormData(initialHRUserState);
+      setModalOpen(false);
+    },
+    onError: (error) => {
+      error.message?.split(",")?.forEach((msg: string) => toast.error(msg));
+    },
   });
 
   const handleSave = () => {
-    const newHR = {
-      id: `hr-${Date.now()}`,
-      name: formData.name,
-      email: formData.email,
-      department: formData.department,
-      password: formData.password, // if you need
-      status: "active" as const,
-      createdAt: new Date().toISOString().split("T")[0],
-    };
-
-    // Add directly to mockHRUsers
-    mockHRUsers.push(newHR);
-
-    // Optional: add to mockUsers too
-    mockUsers.push({
-      id: newHR.id,
-      email: newHR.email,
-      role: "hr",
-      name: newHR.name,
-      department: newHR.department,
-    });
-
-    setFormData({ name: "", email: "", department: "", password: "" });
-    setModalOpen(false);
+    createHRUser();
   };
 
   return (
@@ -149,11 +165,12 @@ export function AddHRUserModal() {
                 !formData.name ||
                 !formData.email ||
                 !formData.department ||
-                !formData.password
+                !formData.password ||
+                isPending
               }
               className="flex-1 items-center gap-2 px-6 py-3 bg-blue-600"
             >
-              Add HR User
+              {isPending ? "Adding..." : "Add HR User"}
             </Button>
           </div>
         </div>

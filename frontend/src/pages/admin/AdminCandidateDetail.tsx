@@ -1,35 +1,80 @@
+import { useNavigate, useParams } from "react-router";
+import { useQuery } from "@tanstack/react-query";
+
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
+  CardDescription,
   CardHeader,
   CardTitle,
-  CardDescription,
 } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import {
-  Mail,
-  Phone,
-  User as UserIcon,
-  FileText,
   CheckCircle2,
-  XCircle,
-  MessagesSquare,
   Download,
   ExternalLink,
+  FileText,
+  Mail,
+  MessagesSquare,
+  Phone,
+  User as UserIcon,
+  XCircle,
 } from "lucide-react";
-import { useNavigate, useParams } from "react-router";
-import { ProtectedRoute } from "../../components/ProtectedRoute";
-import { mockApplications, mockUsers } from "../../lib/mockData";
+
+import Loading from "@/components/shared/Loading";
+import { API_URL, modifiedFetch } from "@/misc/modifiedFetch";
+import Server_ROUTEMAP from "@/misc/Server_ROUTEMAP";
 import { DashboardLayout } from "../../components/DashboardLayout";
+import { ProtectedRoute } from "../../components/ProtectedRoute";
+
+import type { getApplicationsByCandidateId } from "@backend/controllers/application";
+import type { getUserById } from "@backend/controllers/user";
+import type { GetRes } from "@backend/types/req-res";
 
 function AdminCandidateDetailContent() {
   const { candidateId } = useParams<{ candidateId: string }>();
   const navigate = useNavigate();
 
-  const candidate = mockUsers.find((u) => u.id === candidateId);
+  const { data: candidate, isLoading: isCandidateLoading } = useQuery({
+    queryKey: [
+      Server_ROUTEMAP.users.root + Server_ROUTEMAP.users.getById,
+      candidateId,
+    ],
+    queryFn: () =>
+      modifiedFetch<GetRes<typeof getUserById>>(
+        Server_ROUTEMAP.users.root +
+          Server_ROUTEMAP.users.getById.replace(
+            Server_ROUTEMAP.users._params.id,
+            candidateId!,
+          ),
+      ),
+    enabled: !!candidateId,
+    retry: false,
+  });
+
+  const { data: candidateApplications, isLoading: isApplicationsLoading } =
+    useQuery({
+      queryKey: [
+        Server_ROUTEMAP.applications.root +
+          Server_ROUTEMAP.applications.getByCandidate,
+        candidateId,
+      ],
+      queryFn: () =>
+        modifiedFetch<GetRes<typeof getApplicationsByCandidateId>>(
+          Server_ROUTEMAP.applications.root +
+            Server_ROUTEMAP.applications.getByCandidate.replace(
+              Server_ROUTEMAP.applications._params.candidateId,
+              candidateId!,
+            ),
+        ),
+      enabled: !!candidateId,
+      retry: false,
+    });
+
+  if (isCandidateLoading || isApplicationsLoading) return <Loading />;
 
   if (!candidate) {
     return (
@@ -42,9 +87,7 @@ function AdminCandidateDetailContent() {
     );
   }
 
-  const candidateApplications = mockApplications.filter(
-    (app) => app.candidateId === candidate.id,
-  );
+  const applications = candidateApplications || [];
 
   return (
     <DashboardLayout>
@@ -80,7 +123,7 @@ function AdminCandidateDetailContent() {
               <div>
                 <p className="text-sm text-gray-600">Total Applications</p>
                 <p className="text-2xl font-semibold text-gray-900">
-                  {candidateApplications.length}
+                  {applications.length}
                 </p>
               </div>
             </div>
@@ -95,11 +138,7 @@ function AdminCandidateDetailContent() {
               <div>
                 <p className="text-sm text-gray-600">Interviews</p>
                 <p className="text-2xl font-semibold text-amber-700">
-                  {
-                    candidateApplications.filter(
-                      (a) => a.status === "interview",
-                    ).length
-                  }
+                  {applications.filter((a) => a.status === "interview").length}
                 </p>
               </div>
             </div>
@@ -114,10 +153,7 @@ function AdminCandidateDetailContent() {
               <div>
                 <p className="text-sm text-gray-600">Hired</p>
                 <p className="text-2xl font-semibold text-emerald-700">
-                  {
-                    candidateApplications.filter((a) => a.status === "hired")
-                      .length
-                  }
+                  {applications.filter((a) => a.status === "hired").length}
                 </p>
               </div>
             </div>
@@ -132,10 +168,7 @@ function AdminCandidateDetailContent() {
               <div>
                 <p className="text-sm text-gray-600">Rejected</p>
                 <p className="text-2xl font-semibold text-rose-700">
-                  {
-                    candidateApplications.filter((a) => a.status === "rejected")
-                      .length
-                  }
+                  {applications.filter((a) => a.status === "rejected").length}
                 </p>
               </div>
             </div>
@@ -149,7 +182,13 @@ function AdminCandidateDetailContent() {
             <CardContent className="pt-8 flex flex-col items-center">
               <Avatar className="w-32 h-32 border-4 border-background shadow-xl mb-6">
                 <AvatarImage
-                  src={candidate.profilePicture}
+                  src={
+                    API_URL +
+                    Server_ROUTEMAP.uploads.root +
+                    Server_ROUTEMAP.uploads.images +
+                    "/" +
+                    candidate.profilePicture
+                  }
                   className="object-cover"
                 />
                 <AvatarFallback className="bg-primary/10 text-primary">
@@ -170,6 +209,7 @@ function AdminCandidateDetailContent() {
                     <span className="text-muted-foreground flex items-center gap-2">
                       <Mail className="w-4 h-4" /> Email
                     </span>
+
                     <a
                       href={`mailto:${candidate.email}`}
                       className="font-medium hover:text-primary transition-colors"
@@ -189,8 +229,23 @@ function AdminCandidateDetailContent() {
 
                 <div className="pt-6 space-y-3">
                   {candidate.cvUrl && (
-                    <Button className="w-full bg-slate-900 hover:bg-slate-800 text-white shadow-lg">
-                      <Download className="w-4 h-4 mr-2" /> Download Resume
+                    <Button
+                      className="w-full bg-slate-900 hover:bg-slate-800 text-white shadow-lg"
+                      asChild
+                    >
+                      <a
+                        href={
+                          API_URL +
+                          Server_ROUTEMAP.uploads.root +
+                          Server_ROUTEMAP.uploads.cv +
+                          "/" +
+                          candidate.cvUrl
+                        }
+                        download
+                        target="_blank"
+                      >
+                        <Download className="w-4 h-4 mr-2" /> Download Resume
+                      </a>
                     </Button>
                   )}
                   <Button variant="outline" className="w-full border-dashed">
@@ -212,7 +267,7 @@ function AdminCandidateDetailContent() {
               <CardContent className="space-y-4">
                 <p className="text-sm leading-relaxed text-slate-600">
                   This candidate has shown consistent interest in the company
-                  with <strong>{candidateApplications.length}</strong> total
+                  with <strong>{applications.length}</strong> total
                   applications. Currently, their primary focus appears to be in
                   departments related to the job roles they've applied for.
                 </p>

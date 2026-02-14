@@ -1,16 +1,45 @@
 import { useState, useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router";
 import { ProtectedRoute } from "../../components/ProtectedRoute";
 import { DashboardLayout } from "../../components/DashboardLayout";
-import { mockUsers, mockApplications } from "../../lib/mockData";
 import { Search, Mail, User as UserIcon } from "lucide-react";
 import Client_ROUTEMAP from "../../misc/Client_ROUTEMAP";
+import Loading from "@/components/shared/Loading";
+import { modifiedFetch, API_URL } from "@/misc/modifiedFetch";
+import Server_ROUTEMAP from "@/misc/Server_ROUTEMAP";
+
+import type { getAllUsers } from "@backend/controllers/user";
+import type { getAllApplications } from "@backend/controllers/application";
+import type { GetRes } from "@backend/types/req-res";
 
 function AllCandidatesContent() {
   const [searchTerm, setSearchTerm] = useState("");
 
+  const { data: allUsers, isLoading: isUsersLoading } = useQuery({
+    queryKey: [Server_ROUTEMAP.users.root + Server_ROUTEMAP.users.get],
+    queryFn: () =>
+      modifiedFetch<GetRes<typeof getAllUsers>>(
+        Server_ROUTEMAP.users.root + Server_ROUTEMAP.users.get,
+      ),
+    retry: false,
+  });
+
+  const { data: applications, isLoading: isApplicationsLoading } = useQuery({
+    queryKey: [
+      Server_ROUTEMAP.applications.root + Server_ROUTEMAP.applications.get,
+    ],
+    queryFn: () =>
+      modifiedFetch<GetRes<typeof getAllApplications>>(
+        Server_ROUTEMAP.applications.root + Server_ROUTEMAP.applications.get,
+      ),
+    retry: false,
+  });
+
   const candidates = useMemo(() => {
-    return mockUsers
+    if (!allUsers || !applications) return [];
+
+    return allUsers
       .filter((u) => u.role === "candidate")
       .filter((candidate) => {
         const matchesSearch =
@@ -19,16 +48,18 @@ function AllCandidatesContent() {
         return matchesSearch;
       })
       .map((candidate) => {
-        const applications = mockApplications.filter(
+        const candidateApplications = applications.filter(
           (app) => app.candidateId === candidate.id,
         );
-        const applicationCount = applications.length;
-        const hiredCount = applications.filter(
+        const applicationCount = candidateApplications.length;
+        const hiredCount = candidateApplications.filter(
           (app) => app.status === "hired",
         ).length;
         return { ...candidate, applicationCount, hiredCount };
       });
-  }, [searchTerm]);
+  }, [allUsers, applications, searchTerm]);
+
+  if (isUsersLoading || isApplicationsLoading) return <Loading />;
 
   return (
     <DashboardLayout>
@@ -96,7 +127,13 @@ function AllCandidatesContent() {
                     <div className="flex items-center gap-3">
                       {candidate.profilePicture ? (
                         <img
-                          src={candidate.profilePicture}
+                          src={
+                            API_URL +
+                            Server_ROUTEMAP.uploads.root +
+                            Server_ROUTEMAP.uploads.images +
+                            "/" +
+                            candidate.profilePicture
+                          }
                           alt={candidate.name}
                           className="w-10 h-10 rounded-full object-cover"
                         />
@@ -137,7 +174,7 @@ function AllCandidatesContent() {
                     <Link
                       to={`${Client_ROUTEMAP.admin.root}/${Client_ROUTEMAP.admin.candidateDetails.replace(
                         Client_ROUTEMAP.admin._params.candidateId,
-                        candidate.id,
+                        candidate.id.toString(),
                       )}`}
                       className="text-sm text-blue-600 hover:text-blue-700"
                     >

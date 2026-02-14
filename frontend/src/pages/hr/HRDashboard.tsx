@@ -3,7 +3,6 @@ import { Link } from "react-router";
 import { ProtectedRoute } from "../../components/ProtectedRoute";
 import { DashboardLayout } from "../../components/DashboardLayout";
 import { StatusBadge } from "../../components/StatusBadge";
-import { useAuth } from "../../contexts/AuthContext";
 import { mockJobs } from "../../lib/mockData";
 import {
   Plus,
@@ -33,6 +32,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { getPageRange } from "@/misc";
+import { useUserContext } from "@/contexts/UserContext";
 
 const columnHelper = createColumnHelper<(typeof mockJobs)[0]>();
 
@@ -202,7 +202,7 @@ function JobsTable({ jobs }: { jobs: typeof mockJobs }) {
 }
 
 function HRDashboardContent() {
-  const { user } = useAuth();
+  const { user } = useUserContext();
   const [statusFilter, setStatusFilter] = useState<
     "all" | "active" | "closed" | "draft"
   >("all");
@@ -211,7 +211,7 @@ function HRDashboardContent() {
     if (!user) return [];
 
     return mockJobs
-      .filter((job) => job.hrId === user.id)
+      .filter((job) => job.hrId === user.id.toString())
       .filter((job) => statusFilter === "all" || job.status === statusFilter)
       .sort(
         (a, b) =>
@@ -222,7 +222,7 @@ function HRDashboardContent() {
   const stats = useMemo(() => {
     if (!user) return { total: 0, active: 0, totalApplicants: 0 };
 
-    const userJobs = mockJobs.filter((job) => job.hrId === user.id);
+    const userJobs = mockJobs.filter((job) => job.hrId === user.id.toString());
     const total = userJobs.length;
     const active = userJobs.filter((job) => job.status === "active").length;
     const totalApplicants = userJobs.reduce(

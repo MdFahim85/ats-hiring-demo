@@ -1,51 +1,85 @@
 import { useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router";
 import { ProtectedRoute } from "../../components/ProtectedRoute";
 import { DashboardLayout } from "../../components/DashboardLayout";
-import {
-  mockJobs,
-  mockApplications,
-  mockUsers,
-  mockHRUsers,
-} from "../../lib/mockData";
 import { Briefcase, Users, UserCheck, TrendingUp, Clock } from "lucide-react";
 import Client_ROUTEMAP from "../../misc/Client_ROUTEMAP";
+import Loading from "@/components/shared/Loading";
+import { modifiedFetch } from "@/misc/modifiedFetch";
+import Server_ROUTEMAP from "@/misc/Server_ROUTEMAP";
+
+import type { getDashboardMetrics } from "@backend/controllers/admin";
+import type { getAllJobs } from "@backend/controllers/admin";
+import type { getAllCandidates } from "@backend/controllers/admin";
+import type { getHrUsers } from "@backend/controllers/admin";
+import type { getAllApplications } from "@backend/controllers/application";
+import type { GetRes } from "@backend/types/req-res";
 
 function AdminDashboardContent() {
-  const stats = useMemo(() => {
-    const totalJobs = mockJobs.length;
-    const activeJobs = mockJobs.filter((j) => j.status === "active").length;
-    const totalApplications = mockApplications.length;
-    const totalHires = mockApplications.filter(
-      (a) => a.status === "hired",
-    ).length;
-    const activeHRUsers = mockHRUsers.filter(
-      (hr) => hr.status === "active",
-    ).length;
-    const totalCandidates = mockUsers.filter(
-      (u) => u.role === "candidate",
-    ).length;
+  const { data: metrics, isLoading: isMetricsLoading } = useQuery({
+    queryKey: [Server_ROUTEMAP.admin.root + Server_ROUTEMAP.admin.dashboard],
+    queryFn: () =>
+      modifiedFetch<GetRes<typeof getDashboardMetrics>>(
+        Server_ROUTEMAP.admin.root + Server_ROUTEMAP.admin.dashboard,
+      ),
+    retry: false,
+  });
 
-    return {
-      totalJobs,
-      activeJobs,
-      totalApplications,
-      totalHires,
-      activeHRUsers,
-      totalCandidates,
-    };
-  }, []);
+  const { data: jobs, isLoading: isJobsLoading } = useQuery({
+    queryKey: [Server_ROUTEMAP.admin.root + Server_ROUTEMAP.admin.getAllJobs],
+    queryFn: () =>
+      modifiedFetch<GetRes<typeof getAllJobs>>(
+        Server_ROUTEMAP.admin.root + Server_ROUTEMAP.admin.getAllJobs,
+      ),
+    retry: false,
+  });
+
+  const { data: applications, isLoading: isApplicationsLoading } = useQuery({
+    queryKey: [
+      Server_ROUTEMAP.applications.root + Server_ROUTEMAP.applications.get,
+    ],
+    queryFn: () =>
+      modifiedFetch<GetRes<typeof getAllApplications>>(
+        Server_ROUTEMAP.applications.root + Server_ROUTEMAP.applications.get,
+      ),
+    retry: false,
+  });
+
+  const { data: candidates, isLoading: isCandidatesLoading } = useQuery({
+    queryKey: [
+      Server_ROUTEMAP.admin.root + Server_ROUTEMAP.admin.getAllCandidates,
+    ],
+    queryFn: () =>
+      modifiedFetch<GetRes<typeof getAllCandidates>>(
+        Server_ROUTEMAP.admin.root + Server_ROUTEMAP.admin.getAllCandidates,
+      ),
+    retry: false,
+  });
+
+  const { data: hrUsers, isLoading: isHRUsersLoading } = useQuery({
+    queryKey: [Server_ROUTEMAP.admin.root + Server_ROUTEMAP.admin.getHrUsers],
+    queryFn: () =>
+      modifiedFetch<GetRes<typeof getHrUsers>>(
+        Server_ROUTEMAP.admin.root + Server_ROUTEMAP.admin.getHrUsers,
+      ),
+    retry: false,
+  });
 
   const recentActivity = useMemo(() => {
+    if (!jobs || !applications || !candidates || !hrUsers) return [];
+
+    const allUsers = [...candidates, ...hrUsers];
+
     // Get recent jobs and applications
-    const recentJobs = mockJobs
+    const recentJobs = jobs
       .sort(
         (a, b) =>
           new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
       )
       .slice(0, 5)
       .map((job) => {
-        const hr = mockUsers.find((u) => u.id === job.hrId);
+        const hr = allUsers.find((u) => u.id === job.hrId);
         return {
           type: "job" as const,
           title: job.title,
@@ -54,27 +88,45 @@ function AdminDashboardContent() {
         };
       });
 
-    const recentApps = mockApplications
+    const recentApps = applications
       .sort(
         (a, b) =>
           new Date(b.appliedAt).getTime() - new Date(a.appliedAt).getTime(),
       )
       .slice(0, 5)
       .map((app) => {
-        const candidate = mockUsers.find((u) => u.id === app.candidateId);
-        const job = mockJobs.find((j) => j.id === app.jobId);
+        const candidate = allUsers.find((u) => u.id === app.candidateId);
+        const job = jobs.find((j) => j.id === app.jobId);
         return {
           type: "application" as const,
           title: `${candidate?.name || "Unknown"} applied`,
           description: `For ${job?.title || "Unknown Position"}`,
-          date: app.appliedAt.split("T")[0],
+          date: app.appliedAt,
         };
       });
 
     return [...recentJobs, ...recentApps]
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
       .slice(0, 8);
-  }, []);
+  }, [jobs, applications, candidates, hrUsers]);
+
+  if (
+    isMetricsLoading ||
+    isJobsLoading ||
+    isApplicationsLoading ||
+    isCandidatesLoading ||
+    isHRUsersLoading
+  )
+    return <Loading />;
+
+  const stats = metrics || {
+    totalJobs: 0,
+    activeJobs: 0,
+    totalApplications: 0,
+    totalHires: 0,
+    activeHRUsers: 0,
+    totalCandidates: 0,
+  };
 
   return (
     <DashboardLayout>
@@ -131,7 +183,7 @@ function AdminDashboardContent() {
             <span className="text-sm text-green-600">Manage →</span>
           </div>
           <p className="text-sm text-gray-600 mb-1">HR Users</p>
-          <p className="text-3xl text-gray-900">{mockHRUsers.length}</p>
+          <p className="text-3xl text-gray-900">{hrUsers?.length || 0}</p>
           <p className="text-sm text-gray-500 mt-2">
             {stats.activeHRUsers} active
           </p>
@@ -159,7 +211,7 @@ function AdminDashboardContent() {
           </div>
           <p className="text-sm text-gray-600 mb-1">Pending Reviews</p>
           <p className="text-3xl text-gray-900">
-            {mockApplications.filter((a) => a.status === "applied").length}
+            {applications?.filter((a) => a.status === "applied").length || 0}
           </p>
         </div>
       </div>
@@ -193,7 +245,7 @@ function AdminDashboardContent() {
                       />
                     ) : (
                       <Users
-                        className={`w-5 h-5 ${activity.type === "application" ? "text-blue-600" : "text-purple-600"}`}
+                        className={`w-5 h-5 ${activity.type === "application" ? "text-purple-600" : "text-blue-600"}`}
                       />
                     )}
                   </div>

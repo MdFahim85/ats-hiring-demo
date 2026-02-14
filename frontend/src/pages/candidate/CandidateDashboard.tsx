@@ -1,41 +1,93 @@
 import { useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router";
 import { ProtectedRoute } from "../../components/ProtectedRoute";
 import { DashboardLayout } from "../../components/DashboardLayout";
 import { StatusBadge } from "../../components/StatusBadge";
-import { useAuth } from "../../contexts/AuthContext";
-import { mockApplications, mockJobs } from "../../lib/mockData";
 import { Calendar, Briefcase } from "lucide-react";
 import Client_ROUTEMAP from "../../misc/Client_ROUTEMAP";
+import { useUserContext } from "@/contexts/UserContext";
+import Loading from "@/components/shared/Loading";
+import { modifiedFetch } from "@/misc/modifiedFetch";
+import Server_ROUTEMAP from "@/misc/Server_ROUTEMAP";
+
+import type { getApplicationsByCandidateId } from "@backend/controllers/application";
+import type { getJobById } from "@backend/controllers/job";
+import type { GetRes } from "@backend/types/req-res";
 
 function CandidateDashboardContent() {
-  const { user } = useAuth();
+  const { user } = useUserContext();
+
+  const { data: applications, isLoading: isApplicationsLoading } = useQuery({
+    queryKey: [
+      Server_ROUTEMAP.applications.root +
+        Server_ROUTEMAP.applications.getByCandidate,
+      user?.id,
+    ],
+    queryFn: () =>
+      modifiedFetch<GetRes<typeof getApplicationsByCandidateId>>(
+        Server_ROUTEMAP.applications.root +
+          Server_ROUTEMAP.applications.getByCandidate.replace(
+            Server_ROUTEMAP.applications._params.candidateId,
+            user!.id.toString(),
+          ),
+      ),
+    enabled: !!user?.id,
+    retry: false,
+  });
+
+  const { data: jobs, isLoading: isJobsLoading } = useQuery({
+    queryKey: [Server_ROUTEMAP.jobs.root + Server_ROUTEMAP.jobs.get],
+    queryFn: async () => {
+      if (!applications || applications.length === 0) return [];
+
+      const jobIds = [...new Set(applications.map((app) => app.jobId))];
+      const jobPromises = jobIds.map((jobId) =>
+        modifiedFetch<GetRes<typeof getJobById>>(
+          Server_ROUTEMAP.jobs.root +
+            Server_ROUTEMAP.jobs.getById.replace(
+              Server_ROUTEMAP.jobs._params.id,
+              jobId.toString(),
+            ),
+        ),
+      );
+
+      return await Promise.all(jobPromises);
+    },
+    enabled: !!applications && applications.length > 0,
+    retry: false,
+  });
 
   const myApplications = useMemo(() => {
-    if (!user) return [];
+    if (!applications || !jobs) return [];
 
-    return mockApplications
-      .filter((app) => app.candidateId === user.id)
+    return applications
       .map((app) => {
-        const job = mockJobs.find((j) => j.id === app.jobId);
+        const job = jobs.find((j) => j?.id === app.jobId);
         return { ...app, job };
       })
       .sort(
         (a, b) =>
           new Date(b.appliedAt).getTime() - new Date(a.appliedAt).getTime(),
       );
-  }, [user]);
+  }, [applications, jobs]);
 
   const stats = useMemo(() => {
-    const total = myApplications.length;
-    const applied = myApplications.filter((a) => a.status === "applied").length;
-    const shortlisted = myApplications.filter(
+    if (!applications) {
+      return { total: 0, applied: 0, shortlisted: 0, hired: 0 };
+    }
+
+    const total = applications.length;
+    const applied = applications.filter((a) => a.status === "applied").length;
+    const shortlisted = applications.filter(
       (a) => a.status === "shortlisted",
     ).length;
-    const hired = myApplications.filter((a) => a.status === "hired").length;
+    const hired = applications.filter((a) => a.status === "hired").length;
 
     return { total, applied, shortlisted, hired };
-  }, [myApplications]);
+  }, [applications]);
+
+  if (isApplicationsLoading || isJobsLoading) return <Loading />;
 
   return (
     <DashboardLayout>
@@ -86,9 +138,6 @@ function CandidateDashboardContent() {
                   <th className="text-left text-xs text-gray-600 px-6 py-4">
                     Status
                   </th>
-                  <th className="text-left text-xs text-gray-600 px-6 py-4">
-                    Last Updated
-                  </th>
                   <th className="text-right text-xs text-gray-600 px-6 py-4">
                     Actions
                   </th>
@@ -100,14 +149,6 @@ function CandidateDashboardContent() {
 
                   const appliedDate = new Date(
                     app.appliedAt,
-                  ).toLocaleDateString("en-US", {
-                    month: "short",
-                    day: "numeric",
-                    year: "numeric",
-                  });
-
-                  const updatedDate = new Date(
-                    app.updatedAt,
                   ).toLocaleDateString("en-US", {
                     month: "short",
                     day: "numeric",
@@ -137,14 +178,11 @@ function CandidateDashboardContent() {
                       <td className="px-6 py-4">
                         <StatusBadge status={app.status} />
                       </td>
-                      <td className="px-6 py-4 text-sm text-gray-600">
-                        {updatedDate}
-                      </td>
                       <td className="px-6 py-4 text-right">
                         <Link
                           to={`${Client_ROUTEMAP.public.root}/${Client_ROUTEMAP.public.jobDetails.replace(
                             Client_ROUTEMAP.public._params.jobId,
-                            app.job.id,
+                            app.job.id.toString(),
                           )}`}
                           className="text-sm text-blue-600 hover:text-blue-700"
                         >

@@ -12,16 +12,16 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-
-import { DashboardLayout } from "../../components/DashboardLayout";
-import { ProtectedRoute } from "../../components/ProtectedRoute";
-import { useAuth } from "../../contexts/AuthContext";
-import { mockJobs } from "../../lib/mockData";
-import Client_ROUTEMAP from "../../misc/Client_ROUTEMAP";
 import { ArrowLeft } from "lucide-react";
 
+import { useUserContext } from "@/contexts/UserContext";
+import { DashboardLayout } from "../../components/DashboardLayout";
+import { ProtectedRoute } from "../../components/ProtectedRoute";
+import { mockJobs } from "../../lib/mockData";
+import Client_ROUTEMAP from "../../misc/Client_ROUTEMAP";
+
 function CreateJobContent() {
-  const { user } = useAuth();
+  const { user } = useUserContext();
   const navigate = useNavigate();
 
   const [form, setForm] = useState({
@@ -46,7 +46,7 @@ function CreateJobContent() {
       id: `job-${Date.now()}`,
       ...form,
       status: "draft" as const,
-      hrId: user.id,
+      hrId: user.id.toString(),
       createdAt: new Date().toISOString().split("T")[0],
       applicantCount: 0,
     };
@@ -62,7 +62,7 @@ function CreateJobContent() {
       id: `job-${Date.now()}`,
       ...form,
       status: "active" as const,
-      hrId: user.id,
+      hrId: user.id.toString(),
       createdAt: new Date().toISOString().split("T")[0],
       applicantCount: 0,
     };

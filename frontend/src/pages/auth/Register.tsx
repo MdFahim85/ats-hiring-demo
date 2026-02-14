@@ -1,49 +1,32 @@
-import {
-  useState,
-  useRef,
-  type ChangeEventHandler,
-  type FormEvent,
-} from "react";
-import { Link, useNavigate } from "react-router";
-import { Briefcase, Upload, Check, Eye, EyeOff } from "lucide-react";
-import { useAuth } from "../../contexts/AuthContext";
+import { useState, useRef, type ChangeEventHandler } from "react";
+import { Link } from "react-router";
+import { Briefcase, Upload, Eye, EyeOff } from "lucide-react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import toast from "react-hot-toast";
+
 import Client_ROUTEMAP from "../../misc/Client_ROUTEMAP";
+import Server_ROUTEMAP from "../../misc/Server_ROUTEMAP";
+import { modifiedFetch } from "../../misc/modifiedFetch";
 
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 
-type RegisterUser = {
-  name: string;
-  email: string;
-  phone: string;
-  password: string;
-  confirmPassword: string;
-};
-
-const initialState: RegisterUser = {
-  name: "",
-  email: "",
-  phone: "",
-  password: "",
-  confirmPassword: "",
-};
+import type { userRegister } from "@backend/controllers/user";
+import type { GetReqBody, GetRes } from "@backend/types/req-res";
+import { initialUserRegisterState } from "@/misc/initialStates";
 
 export default function CandidateRegister() {
-  const [user, setUser] = useState<RegisterUser>(initialState);
+  const [user, setUser] = useState(initialUserRegisterState);
   const [show, setShow] = useState({
     password: false,
     confirmPassword: false,
   });
-  const [error, setError] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
-  const [success, setSuccess] = useState(false);
 
   const profilePictureRef = useRef<HTMLInputElement | null>(null);
   const cvRef = useRef<HTMLInputElement | null>(null);
 
-  const { register } = useAuth();
-  const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
   const onChange: ChangeEventHandler<HTMLInputElement> = ({
     target: { id, value },
@@ -51,60 +34,57 @@ export default function CandidateRegister() {
     setUser((prev) => ({ ...prev, [id]: value }));
   };
 
-  const handleSubmit = async (e: FormEvent) => {
-    e.preventDefault();
-    setError("");
+  const {
+    mutate: registerUser,
+    isPending,
+    isError,
+    error,
+  } = useMutation({
+    mutationFn: () => {
+      if (user.password !== user.confirmPassword) {
+        throw new Error("Passwords do not match");
+      }
 
-    if (user.password !== user.confirmPassword) {
-      setError("Passwords do not match");
-      return;
-    }
+      if (user.password.length < 8) {
+        throw new Error("Password must be at least 8 characters");
+      }
 
-    if (user.password.length < 8) {
-      setError("Password must be at least 8 characters");
-      return;
-    }
+      const form = new FormData();
 
-    setIsLoading(true);
+      form.append(
+        "json",
+        JSON.stringify(user satisfies GetReqBody<typeof userRegister>),
+      );
 
-    const success = await register({
-      name: user.name,
-      email: user.email,
-      phone: user.phone,
-      password: user.password,
-      profilePicture: profilePictureRef.current?.files?.[0].name,
-      cvUrl: cvRef.current?.files?.[0].name,
-    });
+      if (profilePictureRef.current?.files?.[0]) {
+        form.append("profilePicture", profilePictureRef.current.files[0]);
+      }
 
-    setIsLoading(false);
+      if (cvRef.current?.files?.[0]) {
+        form.append("cvUrl", cvRef.current.files[0]);
+      }
 
-    if (success) {
-      setSuccess(true);
-      setTimeout(() => {
-        navigate(
-          `${Client_ROUTEMAP.candidate.root}/${Client_ROUTEMAP.candidate.dashboard}`,
-        );
-      }, 2000);
-    } else {
-      setError("Email already exists");
-    }
-  };
+      return modifiedFetch<GetRes<typeof userRegister>>(
+        Server_ROUTEMAP.users.root + Server_ROUTEMAP.users.userRegister,
+        {
+          method: "post",
+          body: form,
+        },
+      );
+    },
 
-  if (success) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <Check className="w-8 h-8 text-green-600" />
-          </div>
-          <h2 className="text-2xl text-gray-900 mb-2">
-            Registration Successful!
-          </h2>
-          <p className="text-gray-600">Redirecting to your dashboard...</p>
-        </div>
-      </div>
-    );
-  }
+    onSuccess: async (data) => {
+      if (data?.message) toast.success(data.message);
+
+      await queryClient.invalidateQueries({
+        queryKey: [Server_ROUTEMAP.users.root + Server_ROUTEMAP.users.self],
+      });
+    },
+
+    onError: (err) => {
+      err.message?.split(",")?.forEach((msg: string) => toast.error(msg));
+    },
+  });
 
   return (
     <div className="min-h-screen bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
@@ -131,10 +111,20 @@ export default function CandidateRegister() {
         </div>
 
         <div className="bg-white py-8 px-4 shadow-sm border border-gray-200 rounded-lg sm:px-10">
-          <form onSubmit={handleSubmit} className="space-y-6">
-            {error && (
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              registerUser();
+            }}
+            className="space-y-6"
+          >
+            {isError && (
               <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
-                <p className="text-sm text-red-700">{error}</p>
+                {error?.message?.split(",")?.map((msg: string, i: number) => (
+                  <p key={i} className="text-sm text-red-700">
+                    {msg}
+                  </p>
+                ))}
               </div>
             )}
 
@@ -146,7 +136,6 @@ export default function CandidateRegister() {
                   id="name"
                   value={user.name}
                   onChange={onChange}
-                  placeholder="John Doe"
                   required
                 />
               </div>
@@ -158,7 +147,6 @@ export default function CandidateRegister() {
                   type="email"
                   value={user.email}
                   onChange={onChange}
-                  placeholder="john@example.com"
                   required
                 />
               </div>
@@ -169,9 +157,8 @@ export default function CandidateRegister() {
               <Label htmlFor="phone">Phone Number *</Label>
               <Input
                 id="phone"
-                value={user.phone}
+                value={user.phone ?? ""}
                 onChange={onChange}
-                placeholder="+1 (555) 123-4567"
                 required
               />
             </div>
@@ -185,7 +172,6 @@ export default function CandidateRegister() {
                   type={show.password ? "text" : "password"}
                   value={user.password}
                   onChange={onChange}
-                  placeholder="••••••••"
                   required
                   className="pr-10"
                 />
@@ -210,7 +196,6 @@ export default function CandidateRegister() {
                   type={show.confirmPassword ? "text" : "password"}
                   value={user.confirmPassword}
                   onChange={onChange}
-                  placeholder="••••••••"
                   required
                   className="pr-10"
                 />
@@ -255,13 +240,14 @@ export default function CandidateRegister() {
 
             {/* CV */}
             <div className="space-y-2">
-              <Label>Resume / CV (Optional)</Label>
+              <Label>Resume / CV </Label>
               <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-blue-400 transition-colors">
                 <input
                   ref={cvRef}
                   type="file"
                   accept=".pdf,.doc,.docx"
                   hidden
+                  required
                   id="cv-upload"
                 />
                 <label htmlFor="cv-upload" className="cursor-pointer">
@@ -275,10 +261,10 @@ export default function CandidateRegister() {
 
             <Button
               type="submit"
-              disabled={isLoading}
+              disabled={initialUserRegisterState === user || isPending}
               className="w-full bg-blue-600 hover:bg-blue-700"
             >
-              {isLoading ? "Creating Account..." : "Create Account"}
+              {isPending ? "Creating Account..." : "Create Account"}
             </Button>
           </form>
         </div>

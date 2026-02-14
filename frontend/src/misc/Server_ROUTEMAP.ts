@@ -1,3 +1,5 @@
+import type ROUTEMAP from "@backend/routes/ROUTEMAP";
+
 export default {
   uploads: {
     root: "/uploads",
@@ -80,4 +82,4 @@ export default {
     getAllJobs: "/jobs",
     getAllCandidates: "/candidates",
   },
-} as const;
+} as const satisfies typeof ROUTEMAP;

@@ -42,6 +42,15 @@ export const getAllUsers: RequestHandler<{}, UserWithOutPassword[]> = async (
   res.json(await UserModel.getUsers());
 };
 
+export const getUserById: RequestHandler<
+  Partial<typeof ROUTEMAP.users._params>,
+  UserWithOutPassword
+> = async (req, res) => {
+  const { id } = await idValidator.parseAsync(req.params);
+
+  res.json(await UserModel.getUserById(id));
+};
+
 // User Logout
 export const userLogout: RequestHandler<{}, { message: string }> = async (
   _,
