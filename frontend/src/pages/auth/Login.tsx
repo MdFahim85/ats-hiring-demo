@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import type { userLogin } from "@backend/controllers/user";
 import type { GetReqBody, GetRes } from "@backend/types/req-res";
 import { initialUserLoginState } from "@/misc/initialStates.ts";
+import type { User } from "@backend/models/User.ts";
 
 export default function Login() {
   const [userData, setUserData] = useState(initialUserLoginState);
@@ -100,39 +101,51 @@ export default function Login() {
 
             {/* Email */}
             <div className="space-y-2">
-              <Label htmlFor="email">Email address</Label>
-              <Input
-                id="email"
-                type="email"
-                required
-                value={userData.email}
-                onChange={onChange}
-                placeholder="Enter your email"
-                className={isError ? "border-red-500" : ""}
-              />
+              {(["email"] satisfies KeyOfObjectOfType<User, string>[]).map(
+                (k) => (
+                  <>
+                    <Label htmlFor={k}>Email address</Label>
+                    <Input
+                      id={k}
+                      type="email"
+                      required
+                      value={userData[k]}
+                      onChange={onChange}
+                      placeholder="Enter your email"
+                      className={isError ? "border-red-500" : ""}
+                    />
+                  </>
+                ),
+              )}
             </div>
 
             {/* Password */}
             <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
-              <div className="relative">
-                <Input
-                  id="password"
-                  type={showPassword ? "text" : "password"}
-                  required
-                  value={userData.password}
-                  onChange={onChange}
-                  placeholder="••••••••"
-                  className={`pr-10 ${isError ? "border-red-500" : ""}`}
-                />
-                <button
-                  type="button"
-                  className="absolute right-3 top-1/2 -translate-y-1/2"
-                  onClick={() => setShowPassword((prev) => !prev)}
-                >
-                  {showPassword ? <Eye size={15} /> : <EyeOff size={15} />}
-                </button>
-              </div>
+              {(
+                ["password"] satisfies KeyOfObjectOfType<User, string | null>[]
+              ).map((k) => (
+                <>
+                  <Label htmlFor={k}>Password</Label>
+                  <div className="relative">
+                    <Input
+                      id={k}
+                      type={showPassword ? "text" : "password"}
+                      required
+                      value={userData[k]}
+                      onChange={onChange}
+                      placeholder="••••••••"
+                      className={`pr-10 ${isError ? "border-red-500" : ""}`}
+                    />
+                    <button
+                      type="button"
+                      className="absolute right-3 top-1/2 -translate-y-1/2"
+                      onClick={() => setShowPassword((prev) => !prev)}
+                    >
+                      {showPassword ? <Eye size={15} /> : <EyeOff size={15} />}
+                    </button>
+                  </div>
+                </>
+              ))}
             </div>
 
             <Button
