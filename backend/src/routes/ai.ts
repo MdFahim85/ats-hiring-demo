@@ -5,10 +5,14 @@ import {
   generateJobDescription,
   rankCandidatesForJob,
   findMatchingJobs,
-} from "../controllers/gemini";
+  chat,
+} from "../controllers/ai";
 import ROUTEMAP from "./ROUTEMAP";
 
 const aiRouter = express.Router();
+
+// Chat
+aiRouter.post(ROUTEMAP.ai.chat, chat);
 
 // HR: Generate job description from input
 aiRouter.post(
