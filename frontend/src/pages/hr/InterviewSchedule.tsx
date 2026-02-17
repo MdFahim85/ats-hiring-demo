@@ -1,5 +1,5 @@
-import { useMemo, useState, type ChangeEventHandler } from "react";
-import { useParams, useNavigate } from "react-router";
+import { useMemo, useState, useEffect, type ChangeEventHandler } from "react";
+import { useParams, useNavigate, Link } from "react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 
@@ -16,6 +16,8 @@ import {
   User as UserIcon,
   CheckCircle2,
   Search,
+  AlertCircle,
+  CheckCircle,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -37,7 +39,9 @@ import type { getJobById } from "@backend/controllers/job";
 import type { getApplicationsByJobId } from "@backend/controllers/application";
 import type { getUserById } from "@backend/controllers/user";
 import type { bulkScheduleInterviews } from "@backend/controllers/interview";
+import type { getCalendarStatus } from "@backend/controllers/calendar";
 import type { GetReqBody, GetRes } from "@backend/types/req-res";
+import Client_ROUTEMAP from "@/misc/Client_ROUTEMAP";
 
 /* -------------------------------------------------------------------------- */
 /*                               INITIAL STATE                                */
@@ -64,6 +68,23 @@ function ScheduleInterviewsContent() {
 
   const [schedule, setSchedule] = useState<ScheduleState>(initialScheduleState);
 
+  // Check for calendar connection status from URL params
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const calendarStatus = params.get("calendar");
+    if (calendarStatus === "connected") {
+      toast.success("Google Calendar connected successfully!");
+      // Refresh calendar status
+      queryClient.invalidateQueries({
+        queryKey: [
+          Server_ROUTEMAP.calendar.root + Server_ROUTEMAP.calendar.status,
+        ],
+      });
+    } else if (calendarStatus === "error") {
+      toast.error("Failed to connect Google Calendar. Please try again.");
+    }
+  }, [queryClient]);
+
   /* ---------------------------- Helper onChange ---------------------------- */
 
   const onChange: ChangeEventHandler<HTMLInputElement> = ({
@@ -84,6 +105,29 @@ function ScheduleInterviewsContent() {
     }));
 
   /* ---------------------------- Data -------------------------------------- */
+
+  // Check Google Calendar connection status
+  const { data: calendarStatus } = useQuery({
+    queryKey: [Server_ROUTEMAP.calendar.root + Server_ROUTEMAP.calendar.status],
+    queryFn: () =>
+      modifiedFetch<GetRes<typeof getCalendarStatus>>(
+        Server_ROUTEMAP.calendar.root + Server_ROUTEMAP.calendar.status,
+      ),
+    retry: false,
+  });
+
+  const { data: authUrlData } = useQuery({
+    queryKey: [
+      Server_ROUTEMAP.calendar.root + Server_ROUTEMAP.calendar.authUrl,
+    ],
+    queryFn: () =>
+      modifiedFetch<{ url: string }>(
+        Server_ROUTEMAP.calendar.root + Server_ROUTEMAP.calendar.authUrl,
+      ),
+    // Only fetch if not connected
+    enabled: calendarStatus?.connected === false,
+    retry: false,
+  });
 
   const { data: job, isLoading: isJobLoading } = useQuery({
     queryKey: [Server_ROUTEMAP.jobs.root + Server_ROUTEMAP.jobs.getById, jobId],
@@ -129,7 +173,6 @@ function ScheduleInterviewsContent() {
       const candidateIds = shortlistedApplications.map((a) => a.candidateId);
       if (candidateIds.length === 0) return [];
 
-      // Fetch each candidate individually
       const candidatePromises = candidateIds.map((id) =>
         modifiedFetch<GetRes<typeof getUserById>>(
           Server_ROUTEMAP.users.root +
@@ -159,9 +202,6 @@ function ScheduleInterviewsContent() {
           item.candidate?.name
             .toLowerCase()
             .includes(schedule.searchQuery.toLowerCase()) ?? false;
-
-        // For now, statusFilter is not relevant since we don't have interviews loaded
-        // You may want to fetch interviews as well if needed
         return matchesSearch;
       })
       .sort(
@@ -255,6 +295,13 @@ function ScheduleInterviewsContent() {
   };
 
   const handleScheduleAll = () => {
+    // Warn if virtual interviews selected but calendar not connected
+    if (schedule.interviewType === "virtual" && !calendarStatus?.connected) {
+      toast.error(
+        "Connect Google Calendar first to generate Meet links for virtual interviews!",
+      );
+      return;
+    }
     scheduleInterviews();
   };
 
@@ -290,6 +337,64 @@ function ScheduleInterviewsContent() {
         <h1 className="text-3xl mb-2">Schedule Interviews</h1>
         <p className="text-muted-foreground">{job.title}</p>
       </div>
+
+      {/* Google Calendar Connection Banner */}
+      {calendarStatus?.connected ? (
+        <Card className="mb-6 border-green-200 bg-green-50">
+          <CardContent className="p-4 flex justify-between">
+            <div className="flex items-center gap-3">
+              <CheckCircle className="w-5 h-5 text-green-600 shrink-0" />
+              <div>
+                <p className="text-sm font-medium text-green-800">
+                  Google Calendar Connected
+                </p>
+                <p className="text-xs text-green-600">
+                  Google Meet links will be automatically generated for virtual
+                  interviews and calendar invites sent to all attendees
+                </p>
+              </div>
+            </div>
+            <div className="w-fit">
+              <Link
+                to={`${Client_ROUTEMAP.hr.root}/${Client_ROUTEMAP.hr.calendar}`}
+                className="flex items-center gap-2 px-6 py-3"
+              >
+                <Calendar className="w-4 h-4" />
+                View Calendar
+              </Link>
+            </div>
+          </CardContent>
+        </Card>
+      ) : (
+        <Card className="mb-6 border-orange-200 bg-orange-50">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <AlertCircle className="w-5 h-5 text-orange-600 shrink-0" />
+                <div>
+                  <p className="text-sm font-medium text-orange-800">
+                    Google Calendar Not Connected
+                  </p>
+                  <p className="text-xs text-orange-600">
+                    Connect to automatically generate Google Meet links and send
+                    calendar invites for virtual interviews
+                  </p>
+                </div>
+              </div>
+              {authUrlData?.url && (
+                <Button
+                  size="sm"
+                  className="shrink-0 bg-orange-600 hover:bg-orange-700 text-white"
+                  onClick={() => (window.location.href = authUrlData.url)}
+                >
+                  <Calendar className="w-4 h-4 mr-2" />
+                  Connect Calendar
+                </Button>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
         {/* LEFT PANEL */}
@@ -498,16 +603,22 @@ function ScheduleInterviewsContent() {
                 </div>
               </div>
 
-              {/* Meeting Link */}
+              {/* Meeting Link Info */}
               {schedule.interviewType === "virtual" && (
-                <div className="bg-muted rounded-lg p-4">
-                  <p className="text-sm text-muted-foreground mb-1">
-                    Meeting Link
-                  </p>
-                  <p className="text-sm">Auto-generated for each interview</p>
-                  <p className="text-xs text-muted-foreground mt-2">
-                    A unique link will be generated for each interview
-                  </p>
+                <div
+                  className={`rounded-lg p-4 ${calendarStatus?.connected ? "bg-green-50" : "bg-muted"}`}
+                >
+                  <p className="text-sm font-medium mb-1">Meeting Link</p>
+                  {calendarStatus?.connected ? (
+                    <p className="text-sm text-green-700">
+                      ✓ Google Meet link will be auto-generated and sent to all
+                      attendees via calendar invite
+                    </p>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">
+                      Connect Google Calendar to auto-generate Meet links
+                    </p>
+                  )}
                 </div>
               )}
             </CardContent>
@@ -554,6 +665,24 @@ function ScheduleInterviewsContent() {
                     {schedule.interviewType.replace("_", " ")}
                   </span>
                 </div>
+
+                {/* Calendar status in preview */}
+                {schedule.interviewType === "virtual" && (
+                  <div className="flex justify-between text-sm">
+                    <span>Meet Link:</span>
+                    <span
+                      className={
+                        calendarStatus?.connected
+                          ? "text-green-600"
+                          : "text-orange-600"
+                      }
+                    >
+                      {calendarStatus?.connected
+                        ? "Auto-generated ✓"
+                        : "Calendar not connected ⚠"}
+                    </span>
+                  </div>
+                )}
               </CardContent>
             </Card>
           )}
