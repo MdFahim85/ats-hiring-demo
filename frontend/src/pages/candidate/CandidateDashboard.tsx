@@ -1,10 +1,10 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "react-router";
+import { Link, useNavigate } from "react-router";
 import { ProtectedRoute } from "../../components/ProtectedRoute";
 import { DashboardLayout } from "../../components/DashboardLayout";
 import { StatusBadge } from "../../components/StatusBadge";
-import { Calendar, Briefcase } from "lucide-react";
+import { Calendar, Briefcase, Sparkles, Target } from "lucide-react";
 import Client_ROUTEMAP from "../../misc/Client_ROUTEMAP";
 import { useUserContext } from "@/contexts/UserContext";
 import Loading from "@/components/shared/Loading";
@@ -14,9 +14,25 @@ import Server_ROUTEMAP from "@/misc/Server_ROUTEMAP";
 import type { getApplicationsByCandidateId } from "@backend/controllers/application";
 import type { getJobById } from "@backend/controllers/job";
 import type { GetRes } from "@backend/types/req-res";
+import type { findMatchingJobs } from "@backend/controllers/ai";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 
 function CandidateDashboardContent() {
   const { user } = useUserContext();
+  const navigate = useNavigate();
+
+  const [showMatches, setShowMatches] = useState(false);
+
+  const { data: matchedJobs, isLoading: isMatchLoading } = useQuery({
+    queryKey: [Server_ROUTEMAP.ai.root + Server_ROUTEMAP.ai.matchJobs],
+    queryFn: () =>
+      modifiedFetch<GetRes<typeof findMatchingJobs>>(
+        Server_ROUTEMAP.ai.root + Server_ROUTEMAP.ai.matchJobs,
+      ),
+    enabled: showMatches,
+    retry: false,
+  });
 
   const { data: applications, isLoading: isApplicationsLoading } = useQuery({
     queryKey: [
@@ -92,12 +108,77 @@ function CandidateDashboardContent() {
   return (
     <DashboardLayout>
       {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-3xl text-gray-900 mb-2">My Applications</h1>
-        <p className="text-gray-600">
-          Track the status of your job applications
-        </p>
+      <div className="mb-8 flex justify-between">
+        <div>
+          <h1 className="text-3xl text-gray-900 mb-2">My Applications</h1>
+          <p className="text-gray-600">
+            Track the status of your job applications
+          </p>
+        </div>
+        <div className="space-y-2">
+          <div>
+            <h3 className="text-lg font-semibold mb-1">AI Job Matching</h3>
+            <p className="text-sm text-muted-foreground">
+              Let AI find the best jobs based on your resume
+            </p>
+          </div>
+          <Button
+            onClick={() => setShowMatches(true)}
+            disabled={isMatchLoading}
+          >
+            <Sparkles className="w-4 h-4 mr-2" />
+            {isMatchLoading ? "Finding..." : "Find My Matches"}
+          </Button>
+        </div>
       </div>
+
+      {showMatches && matchedJobs && (
+        <div className="mb-6">
+          <h2 className="text-xl font-semibold mb-4">Your Best Matches</h2>
+          <div className="space-y-3">
+            {matchedJobs.map((match) => (
+              <Card
+                key={match.jobId}
+                className="hover:shadow-md transition-shadow"
+              >
+                <CardContent className="p-4">
+                  <div className="flex items-start justify-between mb-2">
+                    <div>
+                      <h3 className="font-semibold">{match.title}</h3>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Target className="w-4 h-4 text-green-600" />
+                      <span className="font-bold text-green-600">
+                        {match.matchScore}% Match
+                      </span>
+                    </div>
+                  </div>
+
+                  <p className="text-sm text-gray-600 mb-2">
+                    {match.matchReason}
+                  </p>
+
+                  {match.missingSkills.length > 0 && (
+                    <div className="mt-2">
+                      <p className="text-xs text-gray-500">
+                        Skills to develop: {match.missingSkills.join(", ")}
+                      </p>
+                    </div>
+                  )}
+
+                  <Button
+                    size="sm"
+                    className="mt-3"
+                    onClick={() => navigate(`/jobs/${match.jobId}`)}
+                  >
+                    View Job
+                  </Button>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
