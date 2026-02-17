@@ -1,20 +1,4 @@
-import { useState, useMemo } from "react";
-import { Link } from "react-router";
-import { ProtectedRoute } from "../../components/ProtectedRoute";
-import { DashboardLayout } from "../../components/DashboardLayout";
-import { StatusBadge } from "../../components/StatusBadge";
-import { mockJobs } from "../../lib/mockData";
-import {
-  Plus,
-  Users,
-  Edit,
-  Eye,
-  Briefcase,
-  BriefcaseBusiness,
-  ArrowLeft,
-  ArrowRight,
-} from "lucide-react";
-import Client_ROUTEMAP from "../../misc/Client_ROUTEMAP";
+import { useQuery } from "@tanstack/react-query";
 import {
   createColumnHelper,
   flexRender,
@@ -22,6 +6,11 @@ import {
   getPaginationRowModel,
   useReactTable,
 } from "@tanstack/react-table";
+import { useMemo, useState } from "react";
+import { Link } from "react-router";
+
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   Table,
   TableBody,
@@ -29,21 +18,44 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { getPageRange } from "@/misc";
+import {
+  ArrowLeft,
+  ArrowRight,
+  Briefcase,
+  BriefcaseBusiness,
+  Edit,
+  Eye,
+  Plus,
+  Users,
+} from "lucide-react";
+
+import Loading from "@/components/shared/Loading";
 import { useUserContext } from "@/contexts/UserContext";
+import { getPageRange } from "@/misc";
+import { modifiedFetch } from "@/misc/modifiedFetch";
+import Server_ROUTEMAP from "@/misc/Server_ROUTEMAP";
+import { DashboardLayout } from "../../components/DashboardLayout";
+import { ProtectedRoute } from "../../components/ProtectedRoute";
+import { StatusBadge } from "../../components/StatusBadge";
+import Client_ROUTEMAP from "../../misc/Client_ROUTEMAP";
 
-const columnHelper = createColumnHelper<(typeof mockJobs)[0]>();
+import type { getAllApplications } from "@backend/controllers/application";
+import type { getAllJobs } from "@backend/controllers/job";
+import type { Job } from "@backend/models/Job";
+import type { GetRes } from "@backend/types/req-res";
 
-function JobsTable({ jobs }: { jobs: typeof mockJobs }) {
+type JobWithCount = Job & { applicantCount: number };
+
+const columnHelper = createColumnHelper<JobWithCount>();
+
+function JobsTable({ jobs }: { jobs: JobWithCount[] }) {
   const columns = useMemo(
     () => [
       columnHelper.accessor("title", {
         header: "Job Title",
         cell: (info) => (
           <Link
-            to={`${Client_ROUTEMAP.public.root}/${Client_ROUTEMAP.public.jobDetails.replace(Client_ROUTEMAP.public._params.jobId, info.row.original.id)}`}
+            to={`${Client_ROUTEMAP.public.root}/${Client_ROUTEMAP.public.jobDetails.replace(Client_ROUTEMAP.public._params.jobId, info.row.original.id.toString())}`}
             className="text-gray-900 hover:underline"
           >
             {info.getValue()}
@@ -83,13 +95,13 @@ function JobsTable({ jobs }: { jobs: typeof mockJobs }) {
         cell: (info) => (
           <div className="flex items-center gap-4 justify-start">
             <Link
-              to={`${Client_ROUTEMAP.hr.root}/${Client_ROUTEMAP.hr.applicants.replace(Client_ROUTEMAP.hr._params.jobId, info.row.original.id)}`}
+              to={`${Client_ROUTEMAP.hr.root}/${Client_ROUTEMAP.hr.applicants.replace(Client_ROUTEMAP.hr._params.jobId, info.row.original.id.toString())}`}
               className="text-blue-600 hover:bg-blue-50 rounded-lg transition-colors py-4"
             >
               <Eye className="w-4 h-4" />
             </Link>
             <Link
-              to={`${Client_ROUTEMAP.hr.root}/${Client_ROUTEMAP.hr.editJob.replace(Client_ROUTEMAP.hr._params.jobId, info.row.original.id)}`}
+              to={`${Client_ROUTEMAP.hr.root}/${Client_ROUTEMAP.hr.editJob.replace(Client_ROUTEMAP.hr._params.jobId, info.row.original.id.toString())}`}
               className="text-gray-600 hover:bg-gray-100 rounded-lg transition-colors py-4"
             >
               <Edit className="w-4 h-4" />
@@ -207,31 +219,65 @@ function HRDashboardContent() {
     "all" | "active" | "closed" | "draft"
   >("all");
 
-  const myJobs = useMemo(() => {
-    if (!user) return [];
+  const { data: jobs, isLoading: isJobsLoading } = useQuery({
+    queryKey: [Server_ROUTEMAP.jobs.root + Server_ROUTEMAP.jobs.get],
+    queryFn: () =>
+      modifiedFetch<GetRes<typeof getAllJobs>>(
+        Server_ROUTEMAP.jobs.root + Server_ROUTEMAP.jobs.get,
+      ),
+    retry: false,
+  });
 
-    return mockJobs
-      .filter((job) => job.hrId === user.id.toString())
+  const { data: applications, isLoading: isApplicationsLoading } = useQuery({
+    queryKey: [
+      Server_ROUTEMAP.applications.root + Server_ROUTEMAP.applications.get,
+    ],
+    queryFn: () =>
+      modifiedFetch<GetRes<typeof getAllApplications>>(
+        Server_ROUTEMAP.applications.root + Server_ROUTEMAP.applications.get,
+      ),
+    retry: false,
+  });
+
+  console.log(jobs, applications);
+
+  const jobsWithCount = useMemo(() => {
+    if (!jobs || !applications || !user) return [];
+
+    return jobs
+      .filter((job) => job.hrId === user.id)
+      .map((job) => ({
+        ...job,
+        applicantCount: applications.filter((app) => app.jobId === job.id)
+          .length,
+      }));
+  }, [jobs, applications, user]);
+
+  const myJobs = useMemo(() => {
+    return jobsWithCount
       .filter((job) => statusFilter === "all" || job.status === statusFilter)
       .sort(
         (a, b) =>
           new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
       );
-  }, [user, statusFilter]);
+  }, [jobsWithCount, statusFilter]);
 
   const stats = useMemo(() => {
-    if (!user) return { total: 0, active: 0, totalApplicants: 0 };
+    if (!jobsWithCount) return { total: 0, active: 0, totalApplicants: 0 };
 
-    const userJobs = mockJobs.filter((job) => job.hrId === user.id.toString());
-    const total = userJobs.length;
-    const active = userJobs.filter((job) => job.status === "active").length;
-    const totalApplicants = userJobs.reduce(
+    const total = jobsWithCount.length;
+    const active = jobsWithCount.filter(
+      (job) => job.status === "active",
+    ).length;
+    const totalApplicants = jobsWithCount.reduce(
       (sum, job) => sum + job.applicantCount,
       0,
     );
 
     return { total, active, totalApplicants };
-  }, [user]);
+  }, [jobsWithCount]);
+
+  if (isJobsLoading || isApplicationsLoading) return <Loading />;
 
   return (
     <DashboardLayout>
@@ -300,7 +346,6 @@ function HRDashboardContent() {
         </div>
       </div>
 
-      {/* Filters */}
       {/* Filters */}
       <Card className="mb-6">
         <CardContent className="flex flex-col sm:flex-row sm:items-center gap-4 py-4">
