@@ -178,7 +178,7 @@ function CandidateDashboardContent() {
                       <td className="px-6 py-4">
                         <StatusBadge status={app.status} />
                       </td>
-                      <td className="px-6 py-4 text-right">
+                      <td className="px-6 py-4 text-right flex gap-4 justify-end">
                         <Link
                           to={`${Client_ROUTEMAP.public.root}/${Client_ROUTEMAP.public.jobDetails.replace(
                             Client_ROUTEMAP.public._params.jobId,
@@ -188,6 +188,17 @@ function CandidateDashboardContent() {
                         >
                           View Job
                         </Link>
+                        {app.status === "interview" && (
+                          <Link
+                            to={`${Client_ROUTEMAP.candidate.root}/${Client_ROUTEMAP.candidate.interviewDetail.replace(
+                              Client_ROUTEMAP.candidate._params.applicationId,
+                              app.id.toString(),
+                            )}`}
+                            className="text-sm text-purple-600 hover:text-purple-700"
+                          >
+                            View Interview
+                          </Link>
+                        )}
                       </td>
                     </tr>
                   );
