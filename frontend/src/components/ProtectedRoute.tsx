@@ -1,18 +1,19 @@
 import { Navigate, useLocation } from "react-router";
 
 import Client_ROUTEMAP from "../misc/Client_ROUTEMAP";
-import type { UserRole } from "@/types";
 import { useUserContext } from "@/contexts/UserContext";
 import Loading from "./shared/Loading";
 
+import type { User } from "@backend/models/User";
+
 interface ProtectedRouteProps {
   children: React.ReactNode;
-  allowedRoles?: UserRole[];
+  allowedRoles?: User["role"];
   allowLoggedInOnly?: boolean;
   allowLoggedOutOnly?: boolean;
 }
 
-const getDashboardByRole = (role: UserRole) => {
+const getDashboardByRole = (role: User["role"]) => {
   switch (role) {
     case "admin":
       return `${Client_ROUTEMAP.admin.root}/${Client_ROUTEMAP.admin.index}`;
@@ -42,7 +43,7 @@ export function ProtectedRoute({
 
   if (user) {
     if (allowLoggedOutOnly) {
-      const destination = location.state?.from ?? getDashboardByRole(user.role);
+      const destination = getDashboardByRole(user.role);
       return <Navigate to={destination} replace />;
     }
 
