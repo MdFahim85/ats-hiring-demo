@@ -1,7 +1,6 @@
 import { RequestHandler } from "express";
 import status from "http-status";
 
-import { db } from "../config/database";
 import InterviewModel, {
   addInterviewSchema,
   updateInterviewSchema,
@@ -13,6 +12,8 @@ import JobModel from "../models/Job";
 import ROUTEMAP from "../routes/ROUTEMAP";
 import ResponseError from "../utils/ResponseError";
 import { idValidator } from "../utils/validators";
+import { calendarService } from "../utils/calendarService";
+import UserModel from "../models/User";
 
 // Get all interviews (admin only)
 export const getAllInterviews: RequestHandler<{}, Interview[]> = async (
@@ -97,18 +98,6 @@ export const createInterview: RequestHandler<
 
   const interviewData = await addInterviewSchema.parseAsync(interviewBody);
 
-  // Check if interview already exists for this application
-  const existingInterview = await InterviewModel.getInterviewByApplicationId(
-    interviewData.applicationId,
-  );
-
-  if (existingInterview) {
-    throw new ResponseError(
-      "Interview already exists for this application",
-      status.CONFLICT,
-    );
-  }
-
   // Check if application exists
   const application = await ApplicationModel.getApplicationById(
     interviewData.applicationId,
@@ -119,9 +108,11 @@ export const createInterview: RequestHandler<
   // Get job details
   const job = await JobModel.getJobById(interviewData.jobId);
 
+  // Get candidate details
+  const candidate = await UserModel.getUserById(interviewData.candidateId);
+
   // Create interview
   const result = await InterviewModel.addInterview(interviewData);
-
   if (!result) {
     throw new ResponseError("Failed to create interview", status.BAD_REQUEST);
   }
@@ -131,6 +122,46 @@ export const createInterview: RequestHandler<
     interviewData.applicationId,
     "interview",
   );
+
+  // Try to create Google Calendar event (don't fail if this fails)
+
+  if (
+    user.googleAccessToken &&
+    user.googleRefreshToken &&
+    interviewData.type === "virtual"
+  ) {
+    const tokens = {
+      access_token: user.googleAccessToken,
+      refresh_token: user.googleRefreshToken,
+    };
+
+    const event = await calendarService.createInterviewEvent({
+      summary: `Interview: ${job?.title} - ${candidate?.name}`,
+      description: `
+Interview Details:
+- Position: ${job?.title}
+- Department: ${job?.department}
+- Candidate: ${candidate?.name} (${candidate?.email})
+- Interviewer: ${user.name} (${user.email})
+- Duration: ${interviewData.duration} minutes
+        `.trim(),
+      startDateTime: interviewData.interviewDate.toISOString(),
+      durationMinutes: interviewData.duration || 60,
+      attendeeEmails: [candidate?.email!, user.email],
+      tokens,
+    });
+
+    // Update interview with meet link and calendar event ID
+    await InterviewModel.editInterview(result.id, {
+      meetingLink: event.meetLink!,
+      calendarEventId: event.eventId!,
+    });
+
+    // Update result with meet link
+    result.meetingLink = event.meetLink!;
+  } else if (!user.googleAccessToken) {
+    console.log("HR has not connected Google Calendar - skipping");
+  }
 
   // Try to create notification (don't fail if this fails)
   try {
@@ -189,7 +220,6 @@ export const bulkScheduleInterviews: RequestHandler<
 
   // Create interviews
   const result = await InterviewModel.bulkAddInterviews(validatedInterviews);
-
   if (!result || result.length === 0) {
     throw new ResponseError(
       "Failed to schedule interviews",
@@ -204,12 +234,66 @@ export const bulkScheduleInterviews: RequestHandler<
     "interview",
   );
 
-  // Try to create notifications (don't fail if this fails)
+  // Try to create Google Calendar events for virtual interviews
+  if (user.googleAccessToken && user.googleRefreshToken) {
+    const tokens = {
+      access_token: user.googleAccessToken,
+      refresh_token: user.googleRefreshToken,
+    };
+
+    await Promise.all(
+      result.map(async (interview) => {
+        try {
+          // Only create calendar event for virtual interviews
+          if (interview.type !== "virtual") return;
+
+          const candidate = await UserModel.getUserById(interview.candidateId);
+          const job = await JobModel.getJobById(interview.jobId);
+
+          const event = await calendarService.createInterviewEvent({
+            summary: `Interview: ${job?.title} - ${candidate?.name}`,
+            description: `
+Interview Details:
+- Position: ${job?.title}
+- Department: ${job?.department}
+- Candidate: ${candidate?.name} (${candidate?.email})
+- Interviewer: ${user.name} (${user.email})
+- Duration: ${interview.duration} minutes
+              `.trim(),
+            startDateTime: interview.interviewDate.toISOString(),
+            durationMinutes: interview.duration || 60,
+            attendeeEmails: [candidate?.email!, user.email],
+            tokens,
+          });
+
+          // Update interview with meet link and calendar event ID
+          await InterviewModel.editInterview(interview.id, {
+            meetingLink: event.meetLink!,
+            calendarEventId: event.eventId!,
+          });
+
+          // Update result with meet link
+          interview.meetingLink = event.meetLink!;
+
+          console.log(
+            `Calendar event created for interview ${interview.id}: ${event.eventId}`,
+          );
+        } catch (error) {
+          console.error(
+            `Failed to create calendar event for interview ${interview.id}:`,
+            error,
+          );
+          // Don't throw - continue with other interviews
+        }
+      }),
+    );
+  } else {
+    console.log("HR has not connected Google Calendar - skipping");
+  }
+
+  // Try to create notifications
   try {
     for (const interview of result) {
-      const application = await ApplicationModel.getApplicationById(
-        interview.applicationId,
-      );
       const job = await JobModel.getJobById(interview.jobId);
 
       await NotificationModel.addNotification({
@@ -239,6 +323,11 @@ export const updateInterview: RequestHandler<
   { message: string; data: Interview },
   Partial<Interview>
 > = async (req, res) => {
+  const user = req.user;
+
+  if (!user)
+    throw new ResponseError("You are not logged in", status.BAD_REQUEST);
+
   const { id } = await idValidator.parseAsync({ id: req.params.id });
 
   const interviewBody = req.body;
@@ -251,12 +340,32 @@ export const updateInterview: RequestHandler<
 
   const interviewData = await updateInterviewSchema.parseAsync(interviewBody);
   const result = await InterviewModel.editInterview(id, interviewData);
-
   if (!result) {
     throw new ResponseError("Failed to update interview", status.BAD_REQUEST);
   }
 
-  // Try to create notification (don't fail if this fails)
+  // Try to update Google Calendar event
+  if (
+    user.googleAccessToken &&
+    user.googleRefreshToken &&
+    dbInterview.calendarEventId
+  ) {
+    const tokens = {
+      access_token: user.googleAccessToken,
+      refresh_token: user.googleRefreshToken,
+    };
+
+    await calendarService.updateEvent({
+      eventId: dbInterview.calendarEventId,
+      startDateTime: interviewData.interviewDate!.toISOString(),
+      durationMinutes: interviewData.duration || 60,
+      tokens,
+    });
+
+    console.log(`Calendar event updated: ${dbInterview.calendarEventId}`);
+  }
+
+  // Try to create notification
   try {
     const job = await JobModel.getJobById(dbInterview.jobId);
 
@@ -379,11 +488,30 @@ export const deleteInterview: RequestHandler<
   Partial<typeof ROUTEMAP.interviews._params>,
   { message: string }
 > = async (req, res) => {
+  const user = req.user;
+
+  if (!user)
+    throw new ResponseError("You are not logged in", status.BAD_REQUEST);
+
   const { id } = await idValidator.parseAsync({ id: req.params.id });
 
   const dbInterview = await InterviewModel.getInterviewById(id);
   if (!dbInterview)
     throw new ResponseError("Interview not found", status.NOT_FOUND);
+
+  if (
+    user.googleAccessToken &&
+    user.googleRefreshToken &&
+    dbInterview.calendarEventId
+  ) {
+    const tokens = {
+      access_token: user.googleAccessToken,
+      refresh_token: user.googleRefreshToken,
+    };
+
+    await calendarService.deleteEvent(dbInterview.calendarEventId, tokens);
+    console.log(`Calendar event deleted: ${dbInterview.calendarEventId}`);
+  }
 
   const result = await InterviewModel.deleteInterview(id);
   if (!result) {
