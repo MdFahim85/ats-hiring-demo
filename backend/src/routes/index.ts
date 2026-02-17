@@ -11,6 +11,7 @@ import { authMiddleware, roleMiddleware } from "../controllers/_middlewares";
 import interviewRouter from "./interview";
 import notificationRouter from "./notification";
 import adminRouter from "./admin";
+import geminiRouter from "./gemini";
 
 const router = express.Router();
 
@@ -28,11 +29,12 @@ router.use(ROUTEMAP.jobs.root, jobRouter);
 router.use(
   ROUTEMAP.admin.root,
   authMiddleware,
-  roleMiddleware("admin"),
+  roleMiddleware(["admin"]),
   adminRouter,
 );
 router.use(ROUTEMAP.applications.root, authMiddleware, applicationRouter);
 router.use(ROUTEMAP.interviews.root, authMiddleware, interviewRouter);
 router.use(ROUTEMAP.notifications.root, authMiddleware, notificationRouter);
+router.use(ROUTEMAP.ai.root, authMiddleware, geminiRouter);
 
 export default router;
