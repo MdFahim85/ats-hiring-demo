@@ -23,6 +23,7 @@ export default {
     dashboard: "dashboard",
     profile: "profile",
     applications: "applications",
+    interviewDetail: "interviews/:applicationId",
     applicationDetails: "applications/:applicationId",
   },
 
