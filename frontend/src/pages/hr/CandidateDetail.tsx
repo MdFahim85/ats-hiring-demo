@@ -1,64 +1,151 @@
-import { useParams, useNavigate } from "react-router";
-import { ProtectedRoute } from "../../components/ProtectedRoute";
-import { DashboardLayout } from "../../components/DashboardLayout";
-import { StatusBadge } from "../../components/StatusBadge";
-import { mockUsers, mockApplications, mockJobs } from "../../lib/mockData";
-import {
-  Mail,
-  Phone,
-  Download,
-  User as UserIcon,
-  CheckCircle,
-  XCircle,
-  UserCheck,
-  ExternalLink,
-} from "lucide-react";
-import type { ApplicationStatus } from "../../types";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import toast from "react-hot-toast";
+import { useNavigate, useParams } from "react-router";
 
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
+  CardDescription,
   CardHeader,
   CardTitle,
-  CardDescription,
 } from "@/components/ui/card";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
-import { useState } from "react";
+import {
+  CheckCircle,
+  Download,
+  ExternalLink,
+  Mail,
+  Phone,
+  UserCheck,
+  User as UserIcon,
+  XCircle,
+} from "lucide-react";
+
+import Loading from "@/components/shared/Loading";
+import { API_URL, modifiedFetch } from "@/misc/modifiedFetch";
+import Server_ROUTEMAP from "@/misc/Server_ROUTEMAP";
+import { DashboardLayout } from "../../components/DashboardLayout";
+import { ProtectedRoute } from "../../components/ProtectedRoute";
+import { StatusBadge } from "../../components/StatusBadge";
+
+import type {
+  getApplicationsByCandidateId,
+  updateApplicationStatus,
+} from "@backend/controllers/application";
+import type { getJobById } from "@backend/controllers/job";
+import type { getUserById } from "@backend/controllers/user";
+import type { Application } from "@backend/models/Application";
+import type { GetReqBody, GetRes } from "@backend/types/req-res";
 
 function CandidateDetailContent() {
   const { candidateId: id } = useParams<{ candidateId: string }>();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
-  const candidate = mockUsers.find(
-    (u) => u.id === id && u.role === "candidate",
-  );
-
-  const [appsState, setAppsState] = useState(() =>
-    mockApplications
-      .filter((app) => app.candidateId === id)
-      .map((app) => ({
-        ...app,
-        job: mockJobs.find((j) => j.id === app.jobId),
-      }))
-      .sort(
-        (a, b) =>
-          new Date(b.appliedAt).getTime() - new Date(a.appliedAt).getTime(),
+  const { data: candidate, isLoading: isCandidateLoading } = useQuery({
+    queryKey: [Server_ROUTEMAP.users.root + Server_ROUTEMAP.users.getById, id],
+    queryFn: () =>
+      modifiedFetch<GetRes<typeof getUserById>>(
+        Server_ROUTEMAP.users.root +
+          Server_ROUTEMAP.users.getById.replace(
+            Server_ROUTEMAP.users._params.id,
+            id!,
+          ),
       ),
-  );
+    enabled: !!id,
+    retry: false,
+  });
 
-  const handleStatusChange = (appId: string, newStatus: ApplicationStatus) => {
-    setAppsState((prev) =>
-      prev.map((app) =>
-        app.id === appId
-          ? { ...app, status: newStatus, updatedAt: new Date().toISOString() }
-          : app,
+  const { data: applications, isLoading: isApplicationsLoading } = useQuery({
+    queryKey: [
+      Server_ROUTEMAP.applications.root +
+        Server_ROUTEMAP.applications.getByCandidate,
+      id,
+    ],
+    queryFn: () =>
+      modifiedFetch<GetRes<typeof getApplicationsByCandidateId>>(
+        Server_ROUTEMAP.applications.root +
+          Server_ROUTEMAP.applications.getByCandidate.replace(
+            Server_ROUTEMAP.applications._params.candidateId,
+            id!,
+          ),
       ),
-    );
+    enabled: !!id,
+    retry: false,
+  });
+
+  const { data: jobs } = useQuery({
+    queryKey: [Server_ROUTEMAP.jobs.root + Server_ROUTEMAP.jobs.get],
+    queryFn: async () => {
+      if (!applications || applications.length === 0) return [];
+
+      const jobIds = [...new Set(applications.map((app) => app.jobId))];
+      const jobPromises = jobIds.map((jobId) =>
+        modifiedFetch<GetRes<typeof getJobById>>(
+          Server_ROUTEMAP.jobs.root +
+            Server_ROUTEMAP.jobs.getById.replace(
+              Server_ROUTEMAP.jobs._params.id,
+              jobId.toString(),
+            ),
+        ),
+      );
+
+      return await Promise.all(jobPromises);
+    },
+    enabled: !!applications && applications.length > 0,
+    retry: false,
+  });
+
+  const { mutate: updateStatus, isPending } = useMutation({
+    mutationFn: ({
+      appId,
+      newStatus,
+    }: {
+      appId: number;
+      newStatus: Application["status"];
+    }) => {
+      return modifiedFetch<GetRes<typeof updateApplicationStatus>>(
+        Server_ROUTEMAP.applications.root +
+          Server_ROUTEMAP.applications.updateStatus.replace(
+            Server_ROUTEMAP.applications._params.id,
+            appId.toString(),
+          ),
+        {
+          method: "put",
+          body: JSON.stringify({
+            status: newStatus,
+          } satisfies GetReqBody<typeof updateApplicationStatus>),
+        },
+      );
+    },
+    onSuccess: (data) => {
+      if (data) toast.success(data.message);
+
+      queryClient.invalidateQueries({
+        queryKey: [
+          Server_ROUTEMAP.applications.root +
+            Server_ROUTEMAP.applications.getByCandidate,
+          id,
+        ],
+      });
+    },
+    onError: (error) => {
+      error.message?.split(",")?.forEach((msg: string) => toast.error(msg));
+    },
+  });
+
+  const handleStatusChange = (
+    appId: number,
+    newStatus: Application["status"],
+  ) => {
+    updateStatus({ appId, newStatus });
   };
 
-  if (!candidate) {
+  if (isCandidateLoading || isApplicationsLoading) return <Loading />;
+
+  if (!candidate || candidate.role !== "candidate") {
     return (
       <DashboardLayout>
         <div className="text-center py-12">
@@ -67,6 +154,17 @@ function CandidateDetailContent() {
       </DashboardLayout>
     );
   }
+
+  const appsWithJobs =
+    applications
+      ?.map((app) => ({
+        ...app,
+        job: jobs?.find((j) => j!.id === app.jobId),
+      }))
+      .sort(
+        (a, b) =>
+          new Date(b.appliedAt).getTime() - new Date(a.appliedAt).getTime(),
+      ) || [];
 
   return (
     <DashboardLayout>
@@ -91,7 +189,13 @@ function CandidateDetailContent() {
             <CardContent className="pt-8 flex flex-col items-center">
               <Avatar className="w-32 h-32 border-4 border-background shadow-xl mb-6">
                 <AvatarImage
-                  src={candidate.profilePicture}
+                  src={
+                    API_URL +
+                    Server_ROUTEMAP.uploads.root +
+                    Server_ROUTEMAP.uploads.images +
+                    "/" +
+                    candidate.profilePicture
+                  }
                   className="object-cover"
                 />
                 <AvatarFallback className="bg-primary/10 text-primary">
@@ -131,8 +235,23 @@ function CandidateDetailContent() {
 
                 <div className="pt-6 space-y-3">
                   {candidate.cvUrl && (
-                    <Button className="w-full bg-slate-900 hover:bg-slate-800 text-white shadow-lg">
-                      <Download className="w-4 h-4 mr-2" /> Download Resume
+                    <Button
+                      className="w-full bg-slate-900 hover:bg-slate-800 text-white shadow-lg"
+                      asChild
+                    >
+                      <a
+                        href={
+                          API_URL +
+                          Server_ROUTEMAP.uploads.root +
+                          Server_ROUTEMAP.uploads.cv +
+                          "/" +
+                          candidate.cvUrl
+                        }
+                        download
+                        target="_blank"
+                      >
+                        <Download className="w-4 h-4 mr-2" /> Download Resume
+                      </a>
                     </Button>
                   )}
                   <Button variant="outline" className="w-full border-dashed">
@@ -152,9 +271,9 @@ function CandidateDetailContent() {
             </CardHeader>
             <Separator />
             <CardContent className="pt-6">
-              {appsState.length > 0 ? (
+              {appsWithJobs.length > 0 ? (
                 <div className="space-y-6">
-                  {appsState.map((app) => {
+                  {appsWithJobs.map((app) => {
                     if (!app.job) return null;
 
                     const appliedDate = new Date(
@@ -192,6 +311,7 @@ function CandidateDetailContent() {
                                 handleStatusChange(app.id, "shortlisted")
                               }
                               disabled={
+                                isPending ||
                                 app.status === "shortlisted" ||
                                 app.status === "interview" ||
                                 app.status === "hired"
@@ -209,6 +329,7 @@ function CandidateDetailContent() {
                                 handleStatusChange(app.id, "rejected")
                               }
                               disabled={
+                                isPending ||
                                 app.status === "rejected" ||
                                 app.status === "hired"
                               }
@@ -223,7 +344,7 @@ function CandidateDetailContent() {
                               onClick={() =>
                                 handleStatusChange(app.id, "hired")
                               }
-                              disabled={app.status === "hired"}
+                              disabled={isPending || app.status === "hired"}
                             >
                               <CheckCircle className="w-4 h-4" />
                               Hire
