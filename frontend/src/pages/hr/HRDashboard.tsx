@@ -23,6 +23,7 @@ import {
   ArrowRight,
   Briefcase,
   BriefcaseBusiness,
+  Calendar,
   Edit,
   Eye,
   Plus,
@@ -289,13 +290,22 @@ function HRDashboardContent() {
             Manage your job listings and review applicants
           </p>
         </div>
-        <Link
-          to={`${Client_ROUTEMAP.hr.root}/${Client_ROUTEMAP.hr.createJob}`}
-          className="flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-        >
-          <Plus className="w-5 h-5" />
-          Create New Job
-        </Link>
+        <div className="flex gap-4">
+          <Link
+            to={`${Client_ROUTEMAP.hr.root}/${Client_ROUTEMAP.hr.calendar}`}
+            className="flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+          >
+            <Calendar className="w-4 h-4" />
+            Calendar
+          </Link>
+          <Link
+            to={`${Client_ROUTEMAP.hr.root}/${Client_ROUTEMAP.hr.createJob}`}
+            className="flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+          >
+            <Plus className="w-5 h-5" />
+            Create New Job
+          </Link>
+        </div>
       </div>
 
       {/* Stats */}
