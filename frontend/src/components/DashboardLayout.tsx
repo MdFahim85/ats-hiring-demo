@@ -1,4 +1,5 @@
 import Navbar from "./Navbar";
+import { ChatWidget } from "./shared/ChatWidget";
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
@@ -13,6 +14,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {children}
+        <ChatWidget />
       </main>
     </div>
   );
