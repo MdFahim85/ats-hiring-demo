@@ -1,6 +1,5 @@
 import express from "express";
 
-import { authMiddleware, roleMiddleware } from "../controllers/_middlewares";
 import ROUTEMAP from "./ROUTEMAP";
 import {
   getDashboardMetrics,

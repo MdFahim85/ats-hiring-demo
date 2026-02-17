@@ -18,7 +18,7 @@ const applicationRouter = express.Router();
 // Admin only routes
 applicationRouter.get(
   ROUTEMAP.applications.get,
-  roleMiddleware("admin"),
+  roleMiddleware(["admin", "hr"]),
   getAllApplications,
 );
 
@@ -33,26 +33,26 @@ applicationRouter.get(
 // Candidate routes
 applicationRouter.post(
   ROUTEMAP.applications.post,
-  roleMiddleware("candidate"),
+  roleMiddleware(["candidate"]),
   createApplication,
 );
 
 // HR routes
-applicationRouter.patch(
+applicationRouter.put(
   ROUTEMAP.applications.updateStatus,
-  roleMiddleware("hr"),
+  roleMiddleware(["hr"]),
   updateApplicationStatus,
 );
-applicationRouter.patch(
+applicationRouter.put(
   ROUTEMAP.applications.addNotes,
-  roleMiddleware("hr"),
+  roleMiddleware(["hr"]),
   addApplicationNotes,
 );
 
 // Admin routes
 applicationRouter.delete(
   ROUTEMAP.applications.delete,
-  roleMiddleware("admin"),
+  roleMiddleware(["admin"]),
   deleteApplication,
 );
 
