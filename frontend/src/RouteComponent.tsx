@@ -39,6 +39,7 @@ const ScheduleInterviewsLazy = lazy(
   () => import("./pages/hr/InterviewSchedule"),
 );
 const InterviewDetailLazy = lazy(() => import("./pages/hr/InterviewDetail"));
+const CalendarViewLazy = lazy(() => import("./pages/hr/CalenderView"));
 
 /* Admin */
 const AdminDashboardLazy = lazy(() => import("./pages/admin/AdminDashboard"));
@@ -169,6 +170,14 @@ const RouteComponent = () => (
             element={
               <ProtectedRoute allowLoggedInOnly allowedRoles={["hr"]}>
                 <InterviewDetailLazy />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path={Client_ROUTEMAP.hr.calendar}
+            element={
+              <ProtectedRoute allowLoggedInOnly allowedRoles={["hr"]}>
+                <CalendarViewLazy />
               </ProtectedRoute>
             }
           />
