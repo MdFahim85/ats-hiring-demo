@@ -1,27 +1,41 @@
-import { useState } from "react";
-import { useParams, useNavigate } from "react-router";
-import { ProtectedRoute } from "../../components/ProtectedRoute";
-import { DashboardLayout } from "../../components/DashboardLayout";
-import { StatusBadge } from "../../components/StatusBadge";
-import {
-  mockJobs,
-  mockApplications,
-  mockUsers,
-  mockInterviews,
-} from "../../lib/mockData";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
+import toast from "react-hot-toast";
+import { useNavigate, useParams } from "react-router";
+
 import {
   ArrowLeft,
-  Download,
-  Video,
-  MapPin,
-  Clock,
   Calendar,
-  Copy,
   CheckCircle2,
-  XCircle,
-  User as UserIcon,
+  Clock,
+  Copy,
+  Download,
+  MapPin,
   Star,
+  User as UserIcon,
+  Video,
+  XCircle,
 } from "lucide-react";
+
+import Loading from "@/components/shared/Loading";
+import { API_URL, modifiedFetch } from "@/misc/modifiedFetch";
+import Server_ROUTEMAP from "@/misc/Server_ROUTEMAP";
+import { DashboardLayout } from "../../components/DashboardLayout";
+import { ProtectedRoute } from "../../components/ProtectedRoute";
+import { StatusBadge } from "../../components/StatusBadge";
+
+import type {
+  getApplicationsByJobId,
+  updateApplicationStatus,
+} from "@backend/controllers/application";
+import type {
+  addFeedback,
+  addPreparationNotes,
+  getInterviewByApplicationId,
+} from "@backend/controllers/interview";
+import type { getJobById } from "@backend/controllers/job";
+import type { getUserById } from "@backend/controllers/user";
+import type { GetReqBody, GetRes } from "@backend/types/req-res";
 
 function InterviewDetailContent() {
   const { jobId, candidateId } = useParams<{
@@ -29,102 +43,238 @@ function InterviewDetailContent() {
     candidateId: string;
   }>();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
-  const job = mockJobs.find((j) => j.id === jobId);
-  const candidate = mockUsers.find(
-    (u) => u.id === candidateId && u.role === "candidate",
-  );
-  const application = mockApplications.find(
-    (app) => app.jobId === jobId && app.candidateId === candidateId,
-  );
-  const interview = mockInterviews.find(
-    (int) => int.jobId === jobId && int.candidateId === candidateId,
+  const [preparationNotes, setPreparationNotes] = useState("");
+  const [feedback, setFeedback] = useState("");
+  const [rating, setRating] = useState(0);
+  const [result, setResult] = useState<"pending" | "passed" | "failed">(
+    "pending",
   );
 
-  const [preparationNotes, setPreparationNotes] = useState(
-    interview?.preparationNotes || "",
-  );
-  const [feedback, setFeedback] = useState(interview?.feedback || "");
-  const [rating, setRating] = useState(interview?.rating || 0);
-  const [result, setResult] = useState(interview?.result || "pending");
-  const [isSaved, setIsSaved] = useState(false);
+  const { data: job, isLoading: isJobLoading } = useQuery({
+    queryKey: [Server_ROUTEMAP.jobs.root + Server_ROUTEMAP.jobs.getById, jobId],
+    queryFn: () =>
+      modifiedFetch<GetRes<typeof getJobById>>(
+        Server_ROUTEMAP.jobs.root +
+          Server_ROUTEMAP.jobs.getById.replace(
+            Server_ROUTEMAP.jobs._params.id,
+            jobId!,
+          ),
+      ),
+    enabled: !!jobId,
+    retry: false,
+  });
 
-  if (!job || !candidate || !application) {
-    return (
-      <DashboardLayout>
-        <div className="text-center py-12">
-          <p className="text-gray-600">Interview not found</p>
-        </div>
-      </DashboardLayout>
-    );
-  }
+  const { data: candidate, isLoading: isCandidateLoading } = useQuery({
+    queryKey: [
+      Server_ROUTEMAP.users.root + Server_ROUTEMAP.users.getById,
+      candidateId,
+    ],
+    queryFn: () =>
+      modifiedFetch<GetRes<typeof getUserById>>(
+        Server_ROUTEMAP.users.root +
+          Server_ROUTEMAP.users.getById.replace(
+            Server_ROUTEMAP.users._params.id,
+            candidateId!,
+          ),
+      ),
+    enabled: !!candidateId,
+    retry: false,
+  });
+
+  // First find the application
+  const { data: applications, isLoading: isApplicationsLoading } = useQuery({
+    queryKey: [
+      Server_ROUTEMAP.applications.root + Server_ROUTEMAP.applications.getByJob,
+      jobId,
+    ],
+    queryFn: () =>
+      modifiedFetch<GetRes<typeof getApplicationsByJobId>>(
+        Server_ROUTEMAP.applications.root +
+          Server_ROUTEMAP.applications.getByJob.replace(
+            Server_ROUTEMAP.applications._params.jobId,
+            jobId!,
+          ),
+      ),
+    enabled: !!jobId,
+    retry: false,
+  });
+
+  const application = applications?.find(
+    (app) => app.candidateId === parseInt(candidateId!),
+  );
+
+  const { data: interview, isLoading: isInterviewLoading } = useQuery({
+    queryKey: [
+      Server_ROUTEMAP.interviews.root +
+        Server_ROUTEMAP.interviews.getByApplication,
+      application?.id,
+    ],
+    queryFn: () =>
+      modifiedFetch<GetRes<typeof getInterviewByApplicationId>>(
+        Server_ROUTEMAP.interviews.root +
+          Server_ROUTEMAP.interviews.getByApplication.replace(
+            Server_ROUTEMAP.interviews._params.applicationId,
+            application!.id.toString(),
+          ),
+      ),
+    enabled: !!application?.id,
+    retry: false,
+  });
+
+  useEffect(() => {
+    if (interview) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setPreparationNotes(interview.preparationNotes || "");
+      setFeedback(interview.feedback || "");
+      setRating(interview.rating || 0);
+      setResult(interview.result || "pending");
+    }
+  }, [interview]);
+
+  const { mutate: savePreparationNotes, isPending: isSavingNotes } =
+    useMutation({
+      mutationFn: () => {
+        return modifiedFetch<GetRes<typeof addPreparationNotes>>(
+          Server_ROUTEMAP.interviews.root +
+            Server_ROUTEMAP.interviews.addPreparationNotes.replace(
+              Server_ROUTEMAP.interviews._params.id,
+              interview!.id.toString(),
+            ),
+          {
+            method: "put",
+            body: JSON.stringify({
+              preparationNotes,
+            } satisfies GetReqBody<typeof addPreparationNotes>),
+          },
+        );
+      },
+      onSuccess: (data) => {
+        if (data) toast.success("Notes saved successfully");
+
+        queryClient.invalidateQueries({
+          queryKey: [
+            Server_ROUTEMAP.interviews.root +
+              Server_ROUTEMAP.interviews.getByApplication,
+            application?.id,
+          ],
+        });
+      },
+      onError: (error) => {
+        toast.error(error.message);
+      },
+    });
+
+  const { mutate: saveEvaluation, isPending: isSavingEvaluation } = useMutation(
+    {
+      mutationFn: () => {
+        return modifiedFetch<GetRes<typeof addFeedback>>(
+          Server_ROUTEMAP.interviews.root +
+            Server_ROUTEMAP.interviews.addFeedback.replace(
+              Server_ROUTEMAP.interviews._params.id,
+              interview!.id.toString(),
+            ),
+          {
+            method: "put",
+            body: JSON.stringify({
+              feedback,
+              rating,
+              result,
+            } satisfies GetReqBody<typeof addFeedback>),
+          },
+        );
+      },
+      onSuccess: (data) => {
+        if (data) toast.success("Evaluation saved successfully");
+
+        queryClient.invalidateQueries({
+          queryKey: [
+            Server_ROUTEMAP.interviews.root +
+              Server_ROUTEMAP.interviews.getByApplication,
+            application?.id,
+          ],
+        });
+      },
+      onError: (error) => {
+        toast.error(error.message);
+      },
+    },
+  );
+
+  const { mutate: updateStatus, isPending: isUpdatingStatus } = useMutation({
+    mutationFn: (newStatus: "hired" | "rejected") => {
+      return modifiedFetch<GetRes<typeof updateApplicationStatus>>(
+        Server_ROUTEMAP.applications.root +
+          Server_ROUTEMAP.applications.updateStatus.replace(
+            Server_ROUTEMAP.applications._params.id,
+            application!.id.toString(),
+          ),
+        {
+          method: "put",
+          body: JSON.stringify({
+            status: newStatus,
+          } satisfies GetReqBody<typeof updateApplicationStatus>),
+        },
+      );
+    },
+    onSuccess: (data, newStatus) => {
+      if (data) toast.success(data.message);
+
+      queryClient.invalidateQueries({
+        queryKey: [
+          Server_ROUTEMAP.applications.root +
+            Server_ROUTEMAP.applications.getByJob,
+          jobId,
+        ],
+      });
+
+      if (newStatus === "hired") {
+        toast.success("Candidate moved to selected!");
+      } else {
+        toast.success("Candidate has been rejected");
+      }
+
+      navigate(`/hr/jobs/${jobId}/applicants`);
+    },
+    onError: (error) => {
+      toast.error(error.message);
+    },
+  });
 
   const handleCopyLink = () => {
     if (interview?.meetingLink) {
       navigator.clipboard.writeText(interview.meetingLink);
-      alert("Meeting link copied to clipboard!");
+      toast.success("Meeting link copied to clipboard!");
     }
   };
 
   const handleSaveNotes = () => {
-    // Mock save logic
-    setIsSaved(true);
-    setTimeout(() => setIsSaved(false), 2000);
+    savePreparationNotes();
   };
 
   const handleSaveEvaluation = () => {
-    // Mock save logic
-    setIsSaved(true);
-    setTimeout(() => setIsSaved(false), 2000);
+    saveEvaluation();
   };
 
   const handleMoveToSelected = () => {
-    // Mock logic - in real app, this would update the application status
-    application.status = "hired";
-    alert("Candidate moved to selected!");
-    navigate(`/hr/jobs/${jobId}/applicants`);
+    updateStatus("hired");
   };
 
   const handleReject = () => {
-    // Mock logic - in real app, this would update the application status
-    application.status = "rejected";
-    alert("Candidate has been rejected.");
-    navigate(`/hr/jobs/${jobId}/applicants`);
-  };
-
-  const handleReschedule = () => {
-    navigate(`/hr/jobs/${jobId}/schedule-interviews`);
-  };
-
-  const getSkills = () => {
-    const skillsMap: Record<string, string[]> = {
-      "candidate-1": ["React", "TypeScript", "CSS", "Node.js", "GraphQL"],
-      "candidate-2": ["React", "Python", "AWS", "System Design", "PostgreSQL"],
-      "candidate-3": [
-        "JavaScript",
-        "Vue.js",
-        "TypeScript",
-        "Testing",
-        "Docker",
-      ],
-    };
-    return skillsMap[candidateId || ""] || [];
-  };
-
-  const getExperience = () => {
-    return "5+ years in frontend development with focus on React and TypeScript. Previously worked at tech startups building scalable web applications.";
+    updateStatus("rejected");
   };
 
   const isInterviewUpcoming = () => {
-    if (!interview?.date || !interview?.time) return false;
-    const interviewDateTime = new Date(`${interview.date}T${interview.time}`);
+    if (!interview?.interviewDate) return false;
+    const interviewDateTime = new Date(interview.interviewDate);
     const now = new Date();
     return interviewDateTime > now;
   };
 
   const getCountdownTime = () => {
-    if (!interview?.date || !interview?.time) return null;
-    const interviewDateTime = new Date(`${interview.date}T${interview.time}`);
+    if (!interview?.interviewDate) return null;
+    const interviewDateTime = new Date(interview.interviewDate);
     const now = new Date();
     const diff = interviewDateTime.getTime() - now.getTime();
 
@@ -138,8 +288,24 @@ function InterviewDetailContent() {
     return "starting soon";
   };
 
-  const skills = getSkills();
-  const experience = getExperience();
+  if (
+    isJobLoading ||
+    isCandidateLoading ||
+    isApplicationsLoading ||
+    isInterviewLoading
+  )
+    return <Loading />;
+
+  if (!job || !candidate || !application) {
+    return (
+      <DashboardLayout>
+        <div className="text-center py-12">
+          <p className="text-gray-600">Interview not found</p>
+        </div>
+      </DashboardLayout>
+    );
+  }
+
   const interviewStatus = interview?.status || "not_scheduled";
 
   return (
@@ -166,7 +332,13 @@ function InterviewDetailContent() {
             <div className="flex flex-col items-center text-center mb-6">
               {candidate.profilePicture ? (
                 <img
-                  src={candidate.profilePicture}
+                  src={
+                    API_URL +
+                    Server_ROUTEMAP.uploads.root +
+                    Server_ROUTEMAP.uploads.images +
+                    "/" +
+                    candidate.profilePicture
+                  }
                   alt={candidate.name}
                   className="w-24 h-24 rounded-full object-cover mb-4"
                 />
@@ -189,25 +361,6 @@ function InterviewDetailContent() {
               </div>
 
               <div>
-                <p className="text-xs text-gray-600 mb-2">Skills</p>
-                <div className="flex flex-wrap gap-1">
-                  {skills.map((skill) => (
-                    <span
-                      key={skill}
-                      className="px-2 py-1 text-xs bg-gray-100 text-gray-700 rounded"
-                    >
-                      {skill}
-                    </span>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <p className="text-xs text-gray-600 mb-1">Experience</p>
-                <p className="text-sm text-gray-900">{experience}</p>
-              </div>
-
-              <div>
                 <p className="text-xs text-gray-600 mb-1">Application Date</p>
                 <p className="text-sm text-gray-900">
                   {new Date(application.appliedAt).toLocaleDateString("en-US", {
@@ -219,10 +372,21 @@ function InterviewDetailContent() {
               </div>
 
               {candidate.cvUrl && (
-                <button className="w-full flex items-center justify-center gap-2 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors">
+                <a
+                  href={
+                    API_URL +
+                    Server_ROUTEMAP.uploads.root +
+                    Server_ROUTEMAP.uploads.cv +
+                    "/" +
+                    candidate.cvUrl
+                  }
+                  download
+                  target="_blank"
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                >
                   <Download className="w-4 h-4" />
                   <span>Download Resume</span>
-                </button>
+                </a>
               )}
             </div>
           </div>
@@ -236,30 +400,35 @@ function InterviewDetailContent() {
               <StatusBadge status={interviewStatus && "active"} />
             </div>
 
-            {interview && interview.date && interview.time ? (
+            {interview && interview.interviewDate && (
               <div className="space-y-6">
                 {/* Date and Time */}
                 <div className="bg-blue-50 rounded-lg p-4">
                   <div className="flex items-center gap-3 mb-2">
                     <Calendar className="w-5 h-5 text-blue-600" />
                     <div>
-                      <p className="text-sm text-gray-600">Date</p>
+                      <p className="text-sm text-gray-600">Date & Time</p>
                       <p className="text-gray-900">
-                        {new Date(interview.date).toLocaleDateString("en-US", {
-                          weekday: "long",
-                          month: "long",
-                          day: "numeric",
-                          year: "numeric",
-                        })}
+                        {new Date(interview.interviewDate).toLocaleDateString(
+                          "en-US",
+                          {
+                            weekday: "long",
+                            month: "long",
+                            day: "numeric",
+                            year: "numeric",
+                            hour: "numeric",
+                            minute: "numeric",
+                          },
+                        )}
                       </p>
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
                     <Clock className="w-5 h-5 text-blue-600" />
                     <div>
-                      <p className="text-sm text-gray-600">Time</p>
+                      <p className="text-sm text-gray-600">Duration</p>
                       <p className="text-gray-900">
-                        {interview.time} ({interview.duration} min)
+                        {interview.duration || 60} min
                       </p>
                     </div>
                   </div>
@@ -275,7 +444,7 @@ function InterviewDetailContent() {
                 {/* Join Interview Button */}
                 {isInterviewUpcoming() && interview.type === "virtual" && (
                   <a
-                    href={interview.meetingLink}
+                    href={interview.meetingLink || "#"}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="w-full flex items-center justify-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
@@ -307,7 +476,7 @@ function InterviewDetailContent() {
                   </div>
                 )}
 
-                {/* Interview Type and Interviewer */}
+                {/* Interview Type */}
                 <div className="space-y-3">
                   <div className="flex items-center gap-2">
                     {interview.type === "virtual" ? (
@@ -322,45 +491,7 @@ function InterviewDetailContent() {
                       </p>
                     </div>
                   </div>
-
-                  {interview.interviewer && (
-                    <div className="flex items-center gap-2">
-                      <UserIcon className="w-5 h-5 text-gray-600" />
-                      <div>
-                        <p className="text-xs text-gray-600">Interviewer</p>
-                        <p className="text-sm text-gray-900">
-                          {interview.interviewer}
-                        </p>
-                      </div>
-                    </div>
-                  )}
                 </div>
-
-                {/* Actions */}
-                <div className="flex gap-2 pt-4 border-t border-gray-200">
-                  <button
-                    onClick={handleReschedule}
-                    className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
-                  >
-                    Reschedule
-                  </button>
-                  <button className="flex-1 px-4 py-2 border border-red-300 text-red-700 rounded-lg hover:bg-red-50 transition-colors">
-                    Cancel
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div className="text-center py-8">
-                <Calendar className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                <p className="text-sm text-gray-600 mb-4">
-                  Interview not scheduled yet
-                </p>
-                <button
-                  onClick={handleReschedule}
-                  className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                >
-                  Schedule Interview
-                </button>
               </div>
             )}
           </div>
@@ -369,25 +500,28 @@ function InterviewDetailContent() {
         {/* Section 3 - Interview Notes & Evaluation */}
         <div className="space-y-6">
           {/* Preparation Notes */}
-          <div className="bg-white rounded-lg border border-gray-200 p-6">
-            <h2 className="text-lg text-gray-900 mb-4">Preparation Notes</h2>
-            <p className="text-sm text-gray-600 mb-3">
-              Add notes to prepare for the interview
-            </p>
-            <textarea
-              value={preparationNotes}
-              onChange={(e) => setPreparationNotes(e.target.value)}
-              placeholder="What topics to cover, specific questions to ask, areas to focus on..."
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
-              rows={6}
-            />
-            <button
-              onClick={handleSaveNotes}
-              className="w-full mt-3 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-            >
-              {isSaved ? "Saved!" : "Save Notes"}
-            </button>
-          </div>
+          {interview && (
+            <div className="bg-white rounded-lg border border-gray-200 p-6">
+              <h2 className="text-lg text-gray-900 mb-4">Preparation Notes</h2>
+              <p className="text-sm text-gray-600 mb-3">
+                Add notes to prepare for the interview
+              </p>
+              <textarea
+                value={preparationNotes}
+                onChange={(e) => setPreparationNotes(e.target.value)}
+                placeholder="What topics to cover, specific questions to ask, areas to focus on..."
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+                rows={6}
+              />
+              <button
+                onClick={handleSaveNotes}
+                disabled={isSavingNotes}
+                className="w-full mt-3 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:bg-blue-400"
+              >
+                {isSavingNotes ? "Saving..." : "Save Notes"}
+              </button>
+            </div>
+          )}
 
           {/* Interview Feedback & Evaluation */}
           {interview && interview.status !== "not_scheduled" && (
@@ -441,7 +575,9 @@ function InterviewDetailContent() {
                 </label>
                 <select
                   value={result}
-                  onChange={(e) => setResult(e.target.value as typeof result)}
+                  onChange={(e) =>
+                    setResult(e.target.value as "pending" | "passed" | "failed")
+                  }
                   className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 >
                   <option value="pending">Pending</option>
@@ -453,25 +589,26 @@ function InterviewDetailContent() {
               {/* Save Evaluation */}
               <button
                 onClick={handleSaveEvaluation}
-                className="w-full mb-3 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                disabled={isSavingEvaluation}
+                className="w-full mb-3 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:bg-blue-400"
               >
-                {isSaved ? "Saved!" : "Save Evaluation"}
+                {isSavingEvaluation ? "Saving..." : "Save Evaluation"}
               </button>
 
               {/* Final Decision Actions */}
               {result === "passed" && (
                 <div className="pt-4 border-t border-gray-200 space-y-2">
                   <button
-                    // eslint-disable-next-line react-hooks/immutability
                     onClick={handleMoveToSelected}
-                    className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                    disabled={isUpdatingStatus}
+                    className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:bg-green-400"
                   >
                     <CheckCircle2 className="w-4 h-4" />
                     Move to Selected
                   </button>
                   <button
-                    // eslint-disable-next-line react-hooks/immutability
                     onClick={handleReject}
+                    disabled={isUpdatingStatus}
                     className="w-full flex items-center justify-center gap-2 px-4 py-2 border border-red-300 text-red-700 rounded-lg hover:bg-red-50 transition-colors"
                   >
                     <XCircle className="w-4 h-4" />
@@ -482,9 +619,9 @@ function InterviewDetailContent() {
 
               {result === "failed" && (
                 <button
-                  // eslint-disable-next-line react-hooks/immutability
                   onClick={handleReject}
-                  className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                  disabled={isUpdatingStatus}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:bg-red-400"
                 >
                   <XCircle className="w-4 h-4" />
                   Reject Candidate

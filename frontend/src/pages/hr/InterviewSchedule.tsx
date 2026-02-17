@@ -1,14 +1,11 @@
 import { useMemo, useState, type ChangeEventHandler } from "react";
 import { useParams, useNavigate } from "react-router";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import toast from "react-hot-toast";
+
 import { ProtectedRoute } from "../../components/ProtectedRoute";
 import { DashboardLayout } from "../../components/DashboardLayout";
 import { StatusBadge } from "../../components/StatusBadge";
-import {
-  mockJobs,
-  mockApplications,
-  mockUsers,
-  mockInterviews,
-} from "../../lib/mockData";
 
 import {
   ArrowLeft,
@@ -32,20 +29,28 @@ import {
   SelectItem,
   SelectValue,
 } from "@/components/ui/select";
+import Loading from "@/components/shared/Loading";
+import { modifiedFetch, API_URL } from "@/misc/modifiedFetch";
+import Server_ROUTEMAP from "@/misc/Server_ROUTEMAP";
+
+import type { getJobById } from "@backend/controllers/job";
+import type { getApplicationsByJobId } from "@backend/controllers/application";
+import type { getUserById } from "@backend/controllers/user";
+import type { bulkScheduleInterviews } from "@backend/controllers/interview";
+import type { GetReqBody, GetRes } from "@backend/types/req-res";
 
 /* -------------------------------------------------------------------------- */
 /*                               INITIAL STATE                                */
 /* -------------------------------------------------------------------------- */
 
 const initialScheduleState = {
-  selectedCandidates: new Set<string>(),
+  selectedCandidates: new Set<number>(),
   searchQuery: "",
   statusFilter: "not_scheduled" as "all" | "not_scheduled" | "scheduled",
-  selectedDate: "2026-02-20",
+  selectedDate: new Date().toISOString().split("T")[0],
   selectedTime: "10:00",
   duration: "60",
   interviewType: "virtual" as "virtual" | "in_person",
-  interviewer: "Sarah Williams",
 };
 
 type ScheduleState = typeof initialScheduleState;
@@ -55,6 +60,7 @@ type ScheduleState = typeof initialScheduleState;
 function ScheduleInterviewsContent() {
   const { jobId } = useParams<{ jobId: string }>();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
   const [schedule, setSchedule] = useState<ScheduleState>(initialScheduleState);
 
@@ -79,39 +85,141 @@ function ScheduleInterviewsContent() {
 
   /* ---------------------------- Data -------------------------------------- */
 
-  const job = mockJobs.find((j) => j.id === jobId);
+  const { data: job, isLoading: isJobLoading } = useQuery({
+    queryKey: [Server_ROUTEMAP.jobs.root + Server_ROUTEMAP.jobs.getById, jobId],
+    queryFn: () =>
+      modifiedFetch<GetRes<typeof getJobById>>(
+        Server_ROUTEMAP.jobs.root +
+          Server_ROUTEMAP.jobs.getById.replace(
+            Server_ROUTEMAP.jobs._params.id,
+            jobId!,
+          ),
+      ),
+    enabled: !!jobId,
+    retry: false,
+  });
+
+  const { data: applications, isLoading: isApplicationsLoading } = useQuery({
+    queryKey: [
+      Server_ROUTEMAP.applications.root + Server_ROUTEMAP.applications.getByJob,
+      jobId,
+    ],
+    queryFn: () =>
+      modifiedFetch<GetRes<typeof getApplicationsByJobId>>(
+        Server_ROUTEMAP.applications.root +
+          Server_ROUTEMAP.applications.getByJob.replace(
+            Server_ROUTEMAP.applications._params.jobId,
+            jobId!,
+          ),
+      ),
+    enabled: !!jobId,
+    retry: false,
+  });
+
+  const shortlistedApplications = useMemo(() => {
+    return applications?.filter((app) => app.status === "shortlisted") || [];
+  }, [applications]);
+
+  const { data: candidates } = useQuery({
+    queryKey: [
+      Server_ROUTEMAP.users.root + Server_ROUTEMAP.users.getById,
+      shortlistedApplications.map((a) => a.candidateId),
+    ],
+    queryFn: async () => {
+      const candidateIds = shortlistedApplications.map((a) => a.candidateId);
+      if (candidateIds.length === 0) return [];
+
+      // Fetch each candidate individually
+      const candidatePromises = candidateIds.map((id) =>
+        modifiedFetch<GetRes<typeof getUserById>>(
+          Server_ROUTEMAP.users.root +
+            Server_ROUTEMAP.users.getById.replace(
+              Server_ROUTEMAP.users._params.id,
+              id.toString(),
+            ),
+        ),
+      );
+
+      return await Promise.all(candidatePromises);
+    },
+    enabled: shortlistedApplications.length > 0,
+    retry: false,
+  });
 
   const shortlistedCandidates = useMemo(() => {
-    if (!job) return [];
+    if (!shortlistedApplications || !candidates) return [];
 
-    return mockApplications
-      .filter((app) => app.jobId === job.id && app.status === "shortlisted")
+    return shortlistedApplications
       .map((app) => {
-        const candidate = mockUsers.find((u) => u.id === app.candidateId);
-        const interview = mockInterviews.find(
-          (i) => i.applicationId === app.id,
-        );
-        return { ...app, candidate, interview };
+        const candidate = candidates.find((c) => c!.id === app.candidateId);
+        return { ...app, candidate };
       })
       .filter((item) => {
-        const matchesSearch = item.candidate?.name
-          .toLowerCase()
-          .includes(schedule.searchQuery.toLowerCase());
+        const matchesSearch =
+          item.candidate?.name
+            .toLowerCase()
+            .includes(schedule.searchQuery.toLowerCase()) ?? false;
 
-        const matchesStatus =
-          schedule.statusFilter === "all" ||
-          (schedule.statusFilter === "not_scheduled" &&
-            (!item.interview || item.interview.status === "not_scheduled")) ||
-          (schedule.statusFilter === "scheduled" &&
-            item.interview?.status === "scheduled");
-
-        return matchesSearch && matchesStatus;
+        // For now, statusFilter is not relevant since we don't have interviews loaded
+        // You may want to fetch interviews as well if needed
+        return matchesSearch;
       })
       .sort(
         (a, b) =>
           new Date(a.appliedAt).getTime() - new Date(b.appliedAt).getTime(),
       );
-  }, [job, schedule.searchQuery, schedule.statusFilter]);
+  }, [shortlistedApplications, candidates, schedule.searchQuery]);
+
+  const { mutate: scheduleInterviews, isPending } = useMutation({
+    mutationFn: () => {
+      const selectedApps = shortlistedCandidates.filter((c) =>
+        schedule.selectedCandidates.has(c.candidateId),
+      );
+
+      const interviewDateTime = new Date(
+        `${schedule.selectedDate}T${schedule.selectedTime}`,
+      );
+
+      const interviews = selectedApps.map((app) => ({
+        applicationId: app.id,
+        jobId: parseInt(jobId!),
+        candidateId: app.candidateId,
+        interviewDate: interviewDateTime,
+        duration: parseInt(schedule.duration),
+        type: schedule.interviewType,
+        status: "scheduled" as const,
+      }));
+
+      return modifiedFetch<GetRes<typeof bulkScheduleInterviews>>(
+        Server_ROUTEMAP.interviews.root +
+          Server_ROUTEMAP.interviews.bulkSchedule,
+        {
+          method: "post",
+          body: JSON.stringify({
+            interviews,
+          } satisfies GetReqBody<typeof bulkScheduleInterviews>),
+        },
+      );
+    },
+    onSuccess: (data) => {
+      if (data) toast.success(data.message);
+
+      queryClient.invalidateQueries({
+        queryKey: [
+          Server_ROUTEMAP.applications.root +
+            Server_ROUTEMAP.applications.getByJob,
+          jobId,
+        ],
+      });
+
+      navigate(`/hr/jobs/${jobId}/shortlisted`);
+    },
+    onError: (error) => {
+      error.message?.split(",")?.forEach((msg: string) => toast.error(msg));
+    },
+  });
+
+  if (isJobLoading || isApplicationsLoading) return <Loading />;
 
   if (!job) {
     return (
@@ -125,10 +233,13 @@ function ScheduleInterviewsContent() {
 
   /* ---------------------------- Selection Logic --------------------------- */
 
-  const handleToggleCandidate = (id: string) => {
+  const handleToggleCandidate = (id: number) => {
     const updated = new Set(schedule.selectedCandidates);
-    // eslint-disable-next-line @typescript-eslint/no-unused-expressions
-    updated.has(id) ? updated.delete(id) : updated.add(id);
+    if (updated.has(id)) {
+      updated.delete(id);
+    } else {
+      updated.add(id);
+    }
     updateField("selectedCandidates", updated);
   };
 
@@ -144,10 +255,7 @@ function ScheduleInterviewsContent() {
   };
 
   const handleScheduleAll = () => {
-    alert(
-      `Successfully scheduled ${schedule.selectedCandidates.size} interview(s)!`,
-    );
-    navigate(`/hr/jobs/${jobId}/shortlisted`);
+    scheduleInterviews();
   };
 
   const timeSlots = [
@@ -207,33 +315,6 @@ function ScheduleInterviewsContent() {
                 />
               </div>
 
-              {/* Status Filter Row Buttons */}
-              <div className="flex gap-2 mb-4">
-                {[
-                  { value: "not_scheduled", label: "Not Scheduled" },
-                  { value: "scheduled", label: "Scheduled" },
-                  { value: "all", label: "All" },
-                ].map((filter) => (
-                  <Button
-                    key={filter.value}
-                    size="sm"
-                    variant={
-                      schedule.statusFilter === filter.value
-                        ? "default"
-                        : "secondary"
-                    }
-                    onClick={() =>
-                      updateField(
-                        "statusFilter",
-                        filter.value as ScheduleState["statusFilter"],
-                      )
-                    }
-                  >
-                    {filter.label}
-                  </Button>
-                ))}
-              </div>
-
               {/* Select All */}
               <Label className="flex items-center gap-3 mb-2 cursor-pointer">
                 <Input
@@ -279,7 +360,13 @@ function ScheduleInterviewsContent() {
                       <div className="flex items-center gap-3 flex-1">
                         {item.candidate.profilePicture ? (
                           <img
-                            src={item.candidate.profilePicture}
+                            src={
+                              API_URL +
+                              Server_ROUTEMAP.uploads.root +
+                              Server_ROUTEMAP.uploads.images +
+                              "/" +
+                              item.candidate.profilePicture
+                            }
                             alt={item.candidate.name}
                             className="w-10 h-10 rounded-full object-cover"
                           />
@@ -333,6 +420,7 @@ function ScheduleInterviewsContent() {
                     type="date"
                     value={schedule.selectedDate}
                     onChange={onChange}
+                    min={new Date().toISOString().split("T")[0]}
                     className="pl-10"
                   />
                 </div>
@@ -410,35 +498,13 @@ function ScheduleInterviewsContent() {
                 </div>
               </div>
 
-              {/* Interviewer */}
-              <div>
-                <Label className="mb-2 block">Interviewer</Label>
-                <Select
-                  value={schedule.interviewer}
-                  onValueChange={(v: string) => updateField("interviewer", v)}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Sarah Williams">
-                      Sarah Williams
-                    </SelectItem>
-                    <SelectItem value="Mark Thompson">Mark Thompson</SelectItem>
-                    <SelectItem value="Lisa Chen">Lisa Chen</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
               {/* Meeting Link */}
               {schedule.interviewType === "virtual" && (
                 <div className="bg-muted rounded-lg p-4">
                   <p className="text-sm text-muted-foreground mb-1">
                     Meeting Link
                   </p>
-                  <p className="text-sm">
-                    https://meet.example.com/auto-generated-link
-                  </p>
+                  <p className="text-sm">Auto-generated for each interview</p>
                   <p className="text-xs text-muted-foreground mt-2">
                     A unique link will be generated for each interview
                   </p>
@@ -488,11 +554,6 @@ function ScheduleInterviewsContent() {
                     {schedule.interviewType.replace("_", " ")}
                   </span>
                 </div>
-
-                <div className="flex justify-between text-sm">
-                  <span>Interviewer:</span>
-                  <span>{schedule.interviewer}</span>
-                </div>
               </CardContent>
             </Card>
           )}
@@ -500,11 +561,11 @@ function ScheduleInterviewsContent() {
           {/* Action Button */}
           <Button
             onClick={handleScheduleAll}
-            disabled={schedule.selectedCandidates.size === 0}
+            disabled={schedule.selectedCandidates.size === 0 || isPending}
             className="w-full"
           >
             <CheckCircle2 className="w-5 h-5 mr-2" />
-            Schedule{" "}
+            {isPending ? "Scheduling..." : "Schedule"}{" "}
             {schedule.selectedCandidates.size > 0
               ? `${schedule.selectedCandidates.size} `
               : ""}
