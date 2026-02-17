@@ -87,8 +87,16 @@ export default {
   },
   ai: {
     root: "/ai",
+    chat: "/chat",
     generateDesc: "/generate-description",
     rankCandidates: "/rank-candidates",
     matchJobs: "/match-jobs",
+  },
+  calendar: {
+    root: "/calendar",
+    authUrl: "/auth-url",
+    status: "/status",
+    callBack: "/oauth/callback",
+    embedURL: "/embed-url",
   },
 } as const;
