@@ -19,7 +19,11 @@ declare global {
       PORT?: string | undefined;
       JWT_SECRET: string;
       FRONTEND_API: string;
-      GEMINI_API_KEY: string;
+      GROQ_API_KEY: string;
+
+      GOOGLE_CLIENT_ID: string;
+      GOOGLE_CLIENT_SECRET: string;
+      GOOGLE_REDIRECT_URI: string;
     }
   }
 
