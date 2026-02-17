@@ -10,11 +10,7 @@ import {
 } from "@/components/ui/card";
 import type { Job } from "@backend/models/Job";
 
-interface JobCardProps {
-  job: Job;
-}
-
-export function JobCard({ job }: JobCardProps) {
+export function JobCard({ job }: { job: Job }) {
   const deadlineDate = new Date(job.deadline);
   const formattedDeadline = deadlineDate.toLocaleDateString("en-US", {
     month: "short",
