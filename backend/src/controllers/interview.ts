@@ -28,7 +28,7 @@ export const getInterviewById: RequestHandler<
   Partial<typeof ROUTEMAP.interviews._params>,
   Interview
 > = async (req, res) => {
-  const { id } = await idValidator.parseAsync(req.params);
+  const { id } = await idValidator.parseAsync({ id: req.params.id });
 
   const interview = await InterviewModel.getInterviewById(id);
   if (!interview)
@@ -42,7 +42,7 @@ export const getInterviewsByJobId: RequestHandler<
   Partial<typeof ROUTEMAP.interviews._params>,
   Interview[]
 > = async (req, res) => {
-  const { id: jobId } = await idValidator.parseAsync(req.params);
+  const { id: jobId } = await idValidator.parseAsync({ id: req.params.jobId });
 
   const interviews = await InterviewModel.getInterviewsByJobId(jobId);
   res.json(interviews);
@@ -53,7 +53,9 @@ export const getInterviewsByCandidateId: RequestHandler<
   Partial<typeof ROUTEMAP.interviews._params>,
   Interview[]
 > = async (req, res) => {
-  const { id: candidateId } = await idValidator.parseAsync(req.params);
+  const { id: candidateId } = await idValidator.parseAsync({
+    id: req.params.candidateId,
+  });
 
   const interviews =
     await InterviewModel.getInterviewsByCandidateId(candidateId);
@@ -65,7 +67,9 @@ export const getInterviewByApplicationId: RequestHandler<
   Partial<typeof ROUTEMAP.interviews._params>,
   Interview
 > = async (req, res) => {
-  const { id: applicationId } = await idValidator.parseAsync(req.params);
+  const { id: applicationId } = await idValidator.parseAsync({
+    id: req.params.applicationId,
+  });
 
   const interview =
     await InterviewModel.getInterviewByApplicationId(applicationId);
@@ -172,6 +176,7 @@ export const bulkScheduleInterviews: RequestHandler<
     ...interview,
     interviewerId: user.id,
     status: "scheduled" as const,
+    interviewDate: new Date(interview.interviewDate!),
     createdAt: new Date(),
   }));
 
@@ -234,9 +239,10 @@ export const updateInterview: RequestHandler<
   { message: string; data: Interview },
   Partial<Interview>
 > = async (req, res) => {
-  const { id } = await idValidator.parseAsync(req.params);
+  const { id } = await idValidator.parseAsync({ id: req.params.id });
 
   const interviewBody = req.body;
+  interviewBody.interviewDate = new Date(interviewBody.interviewDate!);
   interviewBody.createdAt = new Date();
 
   const dbInterview = await InterviewModel.getInterviewById(id);
@@ -280,7 +286,7 @@ export const updateInterviewStatus: RequestHandler<
   { message: string; data: Interview },
   { status: Interview["status"] }
 > = async (req, res) => {
-  const { id } = await idValidator.parseAsync(req.params);
+  const { id } = await idValidator.parseAsync({ id: req.params.id });
   const { status: newStatus } = req.body;
 
   const dbInterview = await InterviewModel.getInterviewById(id);
@@ -308,7 +314,7 @@ export const addPreparationNotes: RequestHandler<
   { message: string; data: Interview },
   { preparationNotes: string }
 > = async (req, res) => {
-  const { id } = await idValidator.parseAsync(req.params);
+  const { id } = await idValidator.parseAsync({ id: req.params.id });
   const { preparationNotes } = req.body;
 
   const dbInterview = await InterviewModel.getInterviewById(id);
@@ -340,7 +346,7 @@ export const addFeedback: RequestHandler<
     result?: "pending" | "passed" | "failed";
   }
 > = async (req, res) => {
-  const { id } = await idValidator.parseAsync(req.params);
+  const { id } = await idValidator.parseAsync({ id: req.params.id });
   const { feedback, rating, result: interviewResult } = req.body;
 
   const dbInterview = await InterviewModel.getInterviewById(id);
@@ -373,7 +379,7 @@ export const deleteInterview: RequestHandler<
   Partial<typeof ROUTEMAP.interviews._params>,
   { message: string }
 > = async (req, res) => {
-  const { id } = await idValidator.parseAsync(req.params);
+  const { id } = await idValidator.parseAsync({ id: req.params.id });
 
   const dbInterview = await InterviewModel.getInterviewById(id);
   if (!dbInterview)

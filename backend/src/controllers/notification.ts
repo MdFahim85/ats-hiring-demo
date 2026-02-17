@@ -27,7 +27,7 @@ export const getNotificationById: RequestHandler<
   Partial<typeof ROUTEMAP.notifications._params>,
   Notification
 > = async (req, res) => {
-  const { id } = await idValidator.parseAsync(req.params);
+  const { id } = await idValidator.parseAsync({ id: req.params.id });
 
   const notification = await NotificationModel.getNotificationById(id);
   if (!notification)
@@ -62,7 +62,7 @@ export const markAsRead: RequestHandler<
   Partial<typeof ROUTEMAP.notifications._params>,
   { message: string; data: Notification }
 > = async (req, res) => {
-  const { id } = await idValidator.parseAsync(req.params);
+  const { id } = await idValidator.parseAsync({ id: req.params.id });
   const user = req.user;
 
   if (!user)
@@ -118,7 +118,7 @@ export const deleteNotification: RequestHandler<
   Partial<typeof ROUTEMAP.notifications._params>,
   { message: string }
 > = async (req, res) => {
-  const { id } = await idValidator.parseAsync(req.params);
+  const { id } = await idValidator.parseAsync({ id: req.params.id });
   const user = req.user;
 
   if (!user)

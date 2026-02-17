@@ -46,7 +46,7 @@ export const getUserById: RequestHandler<
   Partial<typeof ROUTEMAP.users._params>,
   UserWithOutPassword
 > = async (req, res) => {
-  const { id } = await idValidator.parseAsync(req.params);
+  const { id } = await idValidator.parseAsync({ id: req.params.id });
 
   res.json(await UserModel.getUserById(id));
 };
@@ -171,7 +171,7 @@ export const editUser: RequestHandler<
   Partial<User> & { oldPassword?: string } & { json?: string }
 > = async (req, res) => {
   // Id validation
-  const { id } = await idValidator.parseAsync(req.params);
+  const { id } = await idValidator.parseAsync({ id: req.params.id });
 
   // Read files from multer
   const { profilePicture, cvUrl } = req.files as {
@@ -276,7 +276,7 @@ export const deleteUser: RequestHandler<
   Pick<User, "password">
 > = async (req, res) => {
   // Id validation
-  const { id } = await idValidator.parseAsync(req.params);
+  const { id } = await idValidator.parseAsync({ id: req.params.id });
 
   const { password } = req.body;
   if (!password) {

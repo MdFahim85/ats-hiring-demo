@@ -60,7 +60,7 @@ export const getHrById: RequestHandler<
   Partial<typeof ROUTEMAP.admin._params>,
   User
 > = async (req, res) => {
-  const { id: hrId } = await idValidator.parseAsync(req.params);
+  const { id: hrId } = await idValidator.parseAsync({ id: req.params.hrId });
 
   const hrUser = await UserModel.getUserById(hrId);
   if (!hrUser) throw new ResponseError("HR user not found", status.NOT_FOUND);
@@ -112,7 +112,7 @@ export const updateHr: RequestHandler<
   { message: string; data: User },
   Partial<User>
 > = async (req, res) => {
-  const { id: hrId } = await idValidator.parseAsync(req.params);
+  const { id: hrId } = await idValidator.parseAsync({ id: req.params.hrId });
 
   const hrData = req.body;
   hrData.createdAt = new Date();
@@ -147,7 +147,7 @@ export const deleteHr: RequestHandler<
   Partial<typeof ROUTEMAP.admin._params>,
   { message: string }
 > = async (req, res) => {
-  const { id: hrId } = await idValidator.parseAsync(req.params);
+  const { id: hrId } = await idValidator.parseAsync({ id: req.params.hrId });
 
   const dbHr = await UserModel.getUserById(hrId);
   if (!dbHr) throw new ResponseError("HR user not found", status.NOT_FOUND);

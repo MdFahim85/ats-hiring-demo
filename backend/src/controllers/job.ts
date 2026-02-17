@@ -23,7 +23,7 @@ export const getJobById: RequestHandler<
   Partial<typeof ROUTEMAP.jobs._params>,
   Job
 > = async (req, res) => {
-  const { id } = await idValidator.parseAsync(req.params);
+  const { id } = await idValidator.parseAsync({ id: req.params.id });
 
   const job = await JobModel.getJobById(id);
   if (!job) throw new ResponseError("Job not found", status.NOT_FOUND);
@@ -36,7 +36,7 @@ export const getPublicJobById: RequestHandler<
   Partial<typeof ROUTEMAP.jobs._params>,
   Job
 > = async (req, res) => {
-  const { id } = await idValidator.parseAsync(req.params);
+  const { id } = await idValidator.parseAsync({ id: req.params.id });
 
   const job = await JobModel.getJobById(id);
   if (!job) throw new ResponseError("Job not found", status.NOT_FOUND);
@@ -54,7 +54,7 @@ export const getJobsByHrId: RequestHandler<
   Partial<typeof ROUTEMAP.jobs._params>,
   Job[]
 > = async (req, res) => {
-  const { id: hrId } = await idValidator.parseAsync(req.params);
+  const { id: hrId } = await idValidator.parseAsync({ id: req.params.hrId });
 
   const jobs = await JobModel.getJobsByHrId(hrId);
   res.json(jobs);
@@ -73,6 +73,7 @@ export const createJob: RequestHandler<
 
   const jobBody = req.body;
   jobBody.hrId = user.id;
+  jobBody.deadline = new Date(jobBody.deadline!);
   jobBody.createdAt = new Date();
 
   const jobData = await addJobSchema.parseAsync(jobBody);
@@ -100,13 +101,14 @@ export const updateJob: RequestHandler<
   { message: string; data: Job },
   Partial<Job>
 > = async (req, res) => {
-  const { id } = await idValidator.parseAsync(req.params);
+  const { id } = await idValidator.parseAsync({ id: req.params.id });
   const user = req.user;
 
   if (!user)
     throw new ResponseError("You are not logged in", status.BAD_REQUEST);
 
   const jobBody = req.body;
+  jobBody.deadline = new Date(jobBody.deadline!);
   jobBody.createdAt = new Date();
 
   const job = await db.transaction(async (tx) => {
@@ -143,7 +145,7 @@ export const closeJob: RequestHandler<
   Partial<typeof ROUTEMAP.jobs._params>,
   { message: string; data: Job }
 > = async (req, res) => {
-  const { id } = await idValidator.parseAsync(req.params);
+  const { id } = await idValidator.parseAsync({ id: req.params.id });
   const user = req.user;
 
   if (!user)
@@ -182,7 +184,7 @@ export const deleteJob: RequestHandler<
   Partial<typeof ROUTEMAP.jobs._params>,
   { message: string }
 > = async (req, res) => {
-  const { id } = await idValidator.parseAsync(req.params);
+  const { id } = await idValidator.parseAsync({ id: req.params.id });
   const user = req.user;
 
   if (!user)

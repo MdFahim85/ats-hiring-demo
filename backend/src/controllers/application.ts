@@ -27,7 +27,7 @@ export const getApplicationById: RequestHandler<
   Partial<typeof ROUTEMAP.applications._params>,
   Application
 > = async (req, res) => {
-  const { id } = await idValidator.parseAsync(req.params);
+  const { id } = await idValidator.parseAsync({ id: req.params.id });
 
   const application = await ApplicationModel.getApplicationById(id);
   if (!application)
@@ -41,7 +41,7 @@ export const getApplicationsByJobId: RequestHandler<
   Partial<typeof ROUTEMAP.applications._params>,
   Application[]
 > = async (req, res) => {
-  const { id: jobId } = await idValidator.parseAsync(req.params);
+  const { id: jobId } = await idValidator.parseAsync({ id: req.params.jobId });
 
   const applications = await ApplicationModel.getApplicationsByJobId(jobId);
   res.json(applications);
@@ -52,7 +52,9 @@ export const getApplicationsByCandidateId: RequestHandler<
   Partial<typeof ROUTEMAP.applications._params>,
   Application[]
 > = async (req, res) => {
-  const { id: candidateId } = await idValidator.parseAsync(req.params);
+  const { id: candidateId } = await idValidator.parseAsync({
+    id: req.params.candidateId,
+  });
 
   const applications =
     await ApplicationModel.getApplicationsByCandidateId(candidateId);
@@ -134,7 +136,7 @@ export const updateApplicationStatus: RequestHandler<
   { message: string; data: Application },
   { status: Application["status"] }
 > = async (req, res) => {
-  const { id } = await idValidator.parseAsync(req.params);
+  const { id } = await idValidator.parseAsync({ id: req.params.id });
   const { status: newStatus } = req.body;
 
   const dbApplication = await ApplicationModel.getApplicationById(id);
@@ -246,7 +248,7 @@ export const addApplicationNotes: RequestHandler<
   { message: string; data: Application },
   { notes: string }
 > = async (req, res) => {
-  const { id } = await idValidator.parseAsync(req.params);
+  const { id } = await idValidator.parseAsync({ id: req.params.id });
   const { notes } = req.body;
 
   const dbApplication = await ApplicationModel.getApplicationById(id);
@@ -270,7 +272,7 @@ export const deleteApplication: RequestHandler<
   Partial<typeof ROUTEMAP.applications._params>,
   { message: string }
 > = async (req, res) => {
-  const { id } = await idValidator.parseAsync(req.params);
+  const { id } = await idValidator.parseAsync({ id: req.params.id });
 
   const dbApplication = await ApplicationModel.getApplicationById(id);
   if (!dbApplication)
