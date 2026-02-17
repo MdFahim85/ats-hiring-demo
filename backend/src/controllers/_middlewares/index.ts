@@ -19,7 +19,7 @@ export const globalErrorHandler = ((err, _, res, __) => {
     error.statusCode = status.UNPROCESSABLE_ENTITY;
     error.message = err.issues
       .map((issue) => {
-        return `${issue}`;
+        return `${issue.message}`;
       })
       .join(",");
   } else if (err instanceof ResponseError) {
@@ -131,11 +131,13 @@ export const authMiddleware: RequestHandler = async (req, _res, next) => {
   next();
 };
 
-export const roleMiddleware = (requiredRole: User["role"]): RequestHandler => {
+export const roleMiddleware = (
+  requiredRole: User["role"][],
+): RequestHandler => {
   return (req, _res, next) => {
     const user = req.user;
 
-    if (!user || user.role !== requiredRole) {
+    if (!user || !requiredRole.includes(user.role)) {
       throw new ResponseError(
         `You must have role "${requiredRole}" to access this resource`,
       );
