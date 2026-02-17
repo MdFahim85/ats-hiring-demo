@@ -1,19 +1,4 @@
-import { useState, useMemo } from "react";
-import { useParams, useNavigate, Link } from "react-router";
-import { ProtectedRoute } from "../../components/ProtectedRoute";
-import { DashboardLayout } from "../../components/DashboardLayout";
-import { StatusBadge } from "../../components/StatusBadge";
-import { mockJobs, mockApplications, mockUsers } from "../../lib/mockData";
-import {
-  ArrowLeft,
-  ArrowRight,
-  Download,
-  User as UserIcon,
-  Users,
-} from "lucide-react";
-import Client_ROUTEMAP from "../../misc/Client_ROUTEMAP";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   createColumnHelper,
   flexRender,
@@ -21,15 +6,12 @@ import {
   getPaginationRowModel,
   useReactTable,
 } from "@tanstack/react-table";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { getPageRange } from "@/misc";
-import type { ApplicationStatus } from "../../types";
+import { useMemo, useState } from "react";
+import toast from "react-hot-toast";
+import { Link, useNavigate, useParams } from "react-router";
+
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   Select,
   SelectContent,
@@ -37,21 +19,74 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  ArrowLeft,
+  ArrowRight,
+  Download,
+  User as UserIcon,
+  Users,
+} from "lucide-react";
 
-const columnHelper = createColumnHelper<any>();
+import Loading from "@/components/shared/Loading";
+import { getPageRange } from "@/misc";
+import { API_URL, modifiedFetch } from "@/misc/modifiedFetch";
+import Server_ROUTEMAP from "@/misc/Server_ROUTEMAP";
+import { DashboardLayout } from "../../components/DashboardLayout";
+import { ProtectedRoute } from "../../components/ProtectedRoute";
+import { StatusBadge } from "../../components/StatusBadge";
+import Client_ROUTEMAP from "../../misc/Client_ROUTEMAP";
+import { RankedCandidates } from "./RankedCandidates";
 
-function ApplicantsTable({ applicants }: { applicants: any[] }) {
+import type {
+  getApplicationsByJobId,
+  updateApplicationStatus,
+} from "@backend/controllers/application";
+import type { getJobById } from "@backend/controllers/job";
+import type { getUserById } from "@backend/controllers/user";
+import type { Application } from "@backend/models/Application";
+import type { UserWithOutPassword } from "@backend/models/User";
+import type { GetReqBody, GetRes } from "@backend/types/req-res";
+
+type ApplicantWithCandidate = Application & {
+  candidate?: UserWithOutPassword;
+};
+
+const columnHelper = createColumnHelper<ApplicantWithCandidate>();
+
+function ApplicantsTable({
+  applicants,
+  onStatusChange,
+  isPending,
+}: {
+  applicants: ApplicantWithCandidate[];
+  onStatusChange: (appId: number, newStatus: Application["status"]) => void;
+  isPending: boolean;
+}) {
   const columns = useMemo(
     () => [
       columnHelper.accessor("candidate", {
         header: "Candidate",
         cell: (info) => {
           const candidate = info.getValue();
+          if (!candidate) return null;
           return (
             <div className="flex items-center gap-3">
               {candidate.profilePicture ? (
                 <img
-                  src={candidate.profilePicture}
+                  src={
+                    API_URL +
+                    Server_ROUTEMAP.uploads.root +
+                    Server_ROUTEMAP.uploads.images +
+                    "/" +
+                    candidate.profilePicture
+                  }
                   alt={candidate.name}
                   className="w-10 h-10 rounded-full object-cover"
                 />
@@ -90,8 +125,9 @@ function ApplicantsTable({ applicants }: { applicants: any[] }) {
             <Select
               value={row.status}
               onValueChange={(value: string) =>
-                row.onStatusChange(value as ApplicationStatus)
+                onStatusChange(row.id, value as Application["status"])
               }
+              disabled={isPending || row.status === "hired"}
             >
               <SelectTrigger className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent">
                 <SelectValue placeholder="Select status" />
@@ -116,26 +152,40 @@ function ApplicantsTable({ applicants }: { applicants: any[] }) {
             <div className="flex justify-center gap-2">
               <Link
                 to={`${Client_ROUTEMAP.hr.root}/${Client_ROUTEMAP.hr.candidateDetails
-                  .replace(Client_ROUTEMAP.hr._params.jobId, row.jobId)
+                  .replace(
+                    Client_ROUTEMAP.hr._params.jobId,
+                    row.jobId.toString(),
+                  )
                   .replace(
                     Client_ROUTEMAP.hr._params.candidateId,
-                    row.candidate.id,
+                    row.candidateId.toString(),
                   )}`}
                 className="px-3 py-1.5 text-sm text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
               >
                 View Profile
               </Link>
-              {row.candidate.cvUrl && (
-                <button className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">
+              {row.candidate?.cvUrl && (
+                <a
+                  href={
+                    API_URL +
+                    Server_ROUTEMAP.uploads.root +
+                    Server_ROUTEMAP.uploads.cv +
+                    "/" +
+                    row.candidate.cvUrl
+                  }
+                  download
+                  target="_blank"
+                  className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                >
                   <Download className="w-4 h-4" />
-                </button>
+                </a>
               )}
             </div>
           );
         },
       }),
     ],
-    [],
+    [onStatusChange, isPending],
   );
 
   const table = useReactTable({
@@ -233,45 +283,128 @@ function ApplicantsTable({ applicants }: { applicants: any[] }) {
 function JobApplicantsContent() {
   const { jobId: id } = useParams<{ jobId: string }>();
   const navigate = useNavigate();
-  const [statusFilter, setStatusFilter] = useState<"all" | ApplicationStatus>(
-    "all",
-  );
+  const queryClient = useQueryClient();
+  const [statusFilter, setStatusFilter] = useState<
+    "all" | Application["status"]
+  >("all");
 
-  const [apps, setApps] = useState(mockApplications);
+  const { data: job, isLoading: isJobLoading } = useQuery({
+    queryKey: [Server_ROUTEMAP.jobs.root + Server_ROUTEMAP.jobs.getById, id],
+    queryFn: () =>
+      modifiedFetch<GetRes<typeof getJobById>>(
+        Server_ROUTEMAP.jobs.root +
+          Server_ROUTEMAP.jobs.getById.replace(
+            Server_ROUTEMAP.jobs._params.id,
+            id!,
+          ),
+      ),
+    enabled: !!id,
+    retry: false,
+  });
 
-  const job = mockJobs.find((j) => j.id === id);
+  const { data: applications, isLoading: isApplicationsLoading } = useQuery({
+    queryKey: [
+      Server_ROUTEMAP.applications.root + Server_ROUTEMAP.applications.getByJob,
+      id,
+    ],
+    queryFn: () =>
+      modifiedFetch<GetRes<typeof getApplicationsByJobId>>(
+        Server_ROUTEMAP.applications.root +
+          Server_ROUTEMAP.applications.getByJob.replace(
+            Server_ROUTEMAP.applications._params.jobId,
+            id!,
+          ),
+      ),
+    enabled: !!id,
+    retry: false,
+  });
+
+  const { data: candidates } = useQuery({
+    queryKey: [
+      Server_ROUTEMAP.users.root + Server_ROUTEMAP.users.getById,
+      applications?.map((a) => a.candidateId),
+    ],
+    queryFn: async () => {
+      const candidateIds = applications?.map((a) => a.candidateId) || [];
+      if (candidateIds.length === 0) return [];
+
+      const candidatePromises = candidateIds.map((id) =>
+        modifiedFetch<GetRes<typeof getUserById>>(
+          Server_ROUTEMAP.users.root +
+            Server_ROUTEMAP.users.getById.replace(
+              Server_ROUTEMAP.users._params.id,
+              id.toString(),
+            ),
+        ),
+      );
+
+      return await Promise.all(candidatePromises);
+    },
+    enabled: !!applications && applications.length > 0,
+    retry: false,
+  });
+
+  const { mutate: updateStatus, isPending } = useMutation({
+    mutationFn: ({
+      appId,
+      newStatus,
+    }: {
+      appId: number;
+      newStatus: Application["status"];
+    }) => {
+      return modifiedFetch<GetRes<typeof updateApplicationStatus>>(
+        Server_ROUTEMAP.applications.root +
+          Server_ROUTEMAP.applications.updateStatus.replace(
+            Server_ROUTEMAP.applications._params.id,
+            appId.toString(),
+          ),
+        {
+          method: "put",
+          body: JSON.stringify({
+            status: newStatus,
+          } satisfies GetReqBody<typeof updateApplicationStatus>),
+        },
+      );
+    },
+    onSuccess: (data) => {
+      if (data) toast.success(data.message);
+
+      queryClient.invalidateQueries({
+        queryKey: [
+          Server_ROUTEMAP.applications.root +
+            Server_ROUTEMAP.applications.getByJob,
+          id,
+        ],
+      });
+    },
+    onError: (error) => {
+      toast.error(error.message);
+    },
+  });
 
   const applicants = useMemo(() => {
-    if (!job) return [];
-    return apps
-      .filter((a) => a.jobId === job.id)
+    if (!applications || !candidates) return [];
+
+    return applications
       .filter((a) => statusFilter === "all" || a.status === statusFilter)
-      .map((app) => {
-        const candidate = mockUsers.find((u) => u.id === app.candidateId);
-        return {
-          ...app,
-          candidate,
-          onStatusChange: (newStatus: ApplicationStatus) => {
-            setApps((prevApps) =>
-              prevApps.map((a) =>
-                a.id === app.id ? { ...a, status: newStatus } : a,
-              ),
-            );
-          },
-        };
-      })
+      .map((app) => ({
+        ...app,
+        candidate: candidates.find((c) => c!.id === app.candidateId),
+      }))
       .sort(
         (a, b) =>
           new Date(b.appliedAt).getTime() - new Date(a.appliedAt).getTime(),
       );
-  }, [job, statusFilter, apps]);
+  }, [applications, candidates, statusFilter]);
 
-  const shortlistedCount = useMemo(() => {
-    if (!job) return 0;
-    return mockApplications.filter(
-      (app) => app.jobId === job.id && app.status === "shortlisted",
-    ).length;
-  }, [job]);
+  const handleStatusChange = (
+    appId: number,
+    newStatus: Application["status"],
+  ) => {
+    updateStatus({ appId, newStatus });
+  };
+
+  if (isJobLoading || isApplicationsLoading) return <Loading />;
 
   if (!job) {
     return (
@@ -302,21 +435,20 @@ function JobApplicantsContent() {
           <h1 className="text-3xl text-gray-900">{job.title}</h1>
           <p className="text-gray-600">{applicants.length} applicants</p>
         </div>
+
         <div>
-          {shortlistedCount > 0 && (
-            <Link
-              to={`${Client_ROUTEMAP.hr.root}/${Client_ROUTEMAP.hr.shortListed.replace(Client_ROUTEMAP.hr._params.jobId, job.id)}`}
-              className="flex items-center gap-2 px-6 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
-            >
-              <Users className="w-5 h-5" />
-              Shortlisted Candidates
-            </Link>
-          )}
+          <Link
+            to={`${Client_ROUTEMAP.hr.root}/${Client_ROUTEMAP.hr.shortListed.replace(Client_ROUTEMAP.hr._params.jobId, job.id.toString())}`}
+            className="flex items-center gap-2 px-6 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+          >
+            <Users className="w-5 h-5" />
+            Shortlisted Candidates
+          </Link>
         </div>
       </div>
 
       {/* Filters */}
-      <Card className="mb-6">
+      <Card className="mb-2">
         <CardContent className="flex flex-wrap gap-2 py-4 items-center">
           <span className="text-sm text-muted-foreground">
             Filter by status:
@@ -347,9 +479,16 @@ function JobApplicantsContent() {
           ))}
         </CardContent>
       </Card>
+      <p className="py-4">
+        <RankedCandidates jobId={job.id} />
+      </p>
 
       {/* Applicants Table */}
-      <ApplicantsTable applicants={applicants} />
+      <ApplicantsTable
+        applicants={applicants}
+        onStatusChange={handleStatusChange}
+        isPending={isPending}
+      />
     </DashboardLayout>
   );
 }
