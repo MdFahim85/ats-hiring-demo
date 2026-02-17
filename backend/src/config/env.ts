@@ -11,5 +11,6 @@ export default {
   port: parseInt(process.env.PORT) || 3000,
   jwtSecret: process.env.JWT_SECRET,
   frontend_API: process.env.FRONTEND_API,
+  gemini_API: process.env.GEMINI_API_KEY,
   isProduction: process.env.NODE_ENV === "production",
 };
