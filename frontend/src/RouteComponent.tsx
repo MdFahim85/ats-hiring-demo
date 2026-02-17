@@ -22,6 +22,9 @@ const CandidateRegisterLazy = lazy(() => import("./pages/auth/Register"));
 const CandidateDashboardLazy = lazy(
   () => import("./pages/candidate/CandidateDashboard"),
 );
+const CandidateInterviewLazy = lazy(
+  () => import("./pages/candidate/InterviewDetails"),
+);
 
 /* HR */
 const HRDashboardLazy = lazy(() => import("./pages/hr/HRDashboard"));
@@ -90,6 +93,14 @@ const RouteComponent = () => (
             element={
               <ProtectedRoute allowLoggedInOnly allowedRoles={["candidate"]}>
                 <CandidateDashboardLazy />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path={Client_ROUTEMAP.candidate.interviewDetail}
+            element={
+              <ProtectedRoute allowLoggedInOnly allowedRoles={["candidate"]}>
+                <CandidateInterviewLazy />
               </ProtectedRoute>
             }
           />

@@ -1,22 +1,107 @@
 import { useState } from "react";
 import { useParams, useNavigate, Link, useLocation } from "react-router";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import toast from "react-hot-toast";
 import { PublicHeader } from "../components/PublicHeader";
-import { mockJobs, mockApplications } from "../lib/mockData";
 import { Calendar, Briefcase, ArrowLeft, Check, Edit } from "lucide-react";
 import Client_ROUTEMAP from "../misc/Client_ROUTEMAP";
 import Navbar from "../components/Navbar";
 import { ShareButton } from "../components/ShareButton";
 import { useUserContext } from "@/contexts/UserContext";
+import Loading from "@/components/shared/Loading";
+import { modifiedFetch } from "@/misc/modifiedFetch";
+import Server_ROUTEMAP from "@/misc/Server_ROUTEMAP";
+
+import type { getPublicJobById } from "@backend/controllers/job";
+import type { createApplication } from "@backend/controllers/application";
+import type { getApplicationsByCandidateId } from "@backend/controllers/application";
+import type { GetReqBody, GetRes } from "@backend/types/req-res";
 
 export default function JobDetail() {
   const { jobId: id } = useParams<{ jobId: string }>();
   const navigate = useNavigate();
   const location = useLocation();
   const { user } = useUserContext();
-  const [isApplying, setIsApplying] = useState(false);
+  const queryClient = useQueryClient();
   const [applied, setApplied] = useState(false);
 
-  const job = mockJobs.find((j) => j.id === id);
+  const { data: job, isLoading: isJobLoading } = useQuery({
+    queryKey: [
+      Server_ROUTEMAP.jobs.root + Server_ROUTEMAP.jobs.getPublicById,
+      id,
+    ],
+    queryFn: () =>
+      modifiedFetch<GetRes<typeof getPublicJobById>>(
+        Server_ROUTEMAP.jobs.root +
+          Server_ROUTEMAP.jobs.getPublicById.replace(
+            Server_ROUTEMAP.jobs._params.id,
+            id!,
+          ),
+      ),
+    enabled: !!id,
+    retry: false,
+  });
+
+  const { data: candidateApplications } = useQuery({
+    queryKey: [
+      Server_ROUTEMAP.applications.root +
+        Server_ROUTEMAP.applications.getByCandidate,
+      user?.id,
+    ],
+    queryFn: () =>
+      modifiedFetch<GetRes<typeof getApplicationsByCandidateId>>(
+        Server_ROUTEMAP.applications.root +
+          Server_ROUTEMAP.applications.getByCandidate.replace(
+            Server_ROUTEMAP.applications._params.candidateId,
+            user!.id.toString(),
+          ),
+      ),
+    enabled: !!user && user.role === "candidate",
+    retry: false,
+  });
+
+  const { mutate: submitApplication, isPending: isApplying } = useMutation({
+    mutationFn: () => {
+      return modifiedFetch<GetRes<typeof createApplication>>(
+        Server_ROUTEMAP.applications.root + Server_ROUTEMAP.applications.post,
+        {
+          method: "post",
+          body: JSON.stringify({
+            jobId: parseInt(id!),
+            candidateId: user!.id,
+            status: "applied",
+          } satisfies GetReqBody<typeof createApplication>),
+        },
+      );
+    },
+    onSuccess: (data) => {
+      if (data) toast.success(data.message);
+
+      queryClient.invalidateQueries({
+        queryKey: [
+          Server_ROUTEMAP.applications.root +
+            Server_ROUTEMAP.applications.getByCandidate,
+          user?.id,
+        ],
+      });
+
+      setApplied(true);
+    },
+    onError: (error) => {
+      error.message?.split(",")?.forEach((msg: string) => toast.error(msg));
+    },
+  });
+
+  const handleApply = () => {
+    if (!user) {
+      navigate(`${Client_ROUTEMAP.auth.root}/${Client_ROUTEMAP.auth.login}`);
+      return;
+    }
+
+    submitApplication();
+  };
+
+  if (isJobLoading) return <Loading />;
 
   if (!job) {
     return (
@@ -42,35 +127,9 @@ export default function JobDetail() {
     year: "numeric",
   });
 
-  // Check if user already applied
-  const hasApplied =
-    user &&
-    user.role === "candidate" &&
-    mockApplications.some(
-      (app) => app.jobId === job.id && app.candidateId === user.id.toString(),
-    );
-
-  const handleApply = () => {
-    if (!user) {
-      navigate(`${Client_ROUTEMAP.auth.root}/${Client_ROUTEMAP.auth.login}`);
-      return;
-    }
-
-    setIsApplying(true);
-    // Simulate application submission
-    setTimeout(() => {
-      mockApplications.push({
-        id: `app-${Date.now()}`,
-        jobId: job.id,
-        candidateId: user.id.toString(),
-        status: "applied",
-        appliedAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      });
-      setIsApplying(false);
-      setApplied(true);
-    }, 1000);
-  };
+  const hasApplied = candidateApplications?.some(
+    (app) => app.jobId === parseInt(id!),
+  );
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -91,11 +150,11 @@ export default function JobDetail() {
           <div className="mb-8 pb-8 border-b border-gray-200">
             <div className="flex justify-between items-center">
               <h1 className="text-3xl text-gray-900 mb-4">{job.title}</h1>
-              {user && job.hrId === user.id.toString() && (
+              {user && job.hrId === user.id && (
                 <Link
                   to={`${Client_ROUTEMAP.hr.root}/${Client_ROUTEMAP.hr.editJob.replace(
                     Client_ROUTEMAP.hr._params.jobId,
-                    job.id,
+                    job.id.toString(),
                   )}`}
                   className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
                   title="Edit Job"
