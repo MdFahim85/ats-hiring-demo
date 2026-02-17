@@ -29,25 +29,25 @@ jobRouter.get(ROUTEMAP.jobs.getByHr, authMiddleware, getJobsByHrId);
 jobRouter.post(
   ROUTEMAP.jobs.post,
   authMiddleware,
-  roleMiddleware("hr"),
+  roleMiddleware(["hr"]),
   createJob,
 );
 jobRouter.put(
   ROUTEMAP.jobs.put,
   authMiddleware,
-  roleMiddleware("hr"),
+  roleMiddleware(["hr"]),
   updateJob,
 );
-jobRouter.patch(
+jobRouter.put(
   ROUTEMAP.jobs.close,
   authMiddleware,
-  roleMiddleware("hr"),
+  roleMiddleware(["hr"]),
   closeJob,
 );
 jobRouter.delete(
   ROUTEMAP.jobs.delete,
   authMiddleware,
-  roleMiddleware("hr"),
+  roleMiddleware(["hr"]),
   deleteJob,
 );
 

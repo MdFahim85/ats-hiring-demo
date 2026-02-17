@@ -22,7 +22,7 @@ const interviewRouter = express.Router();
 // Admin only routes
 interviewRouter.get(
   ROUTEMAP.interviews.get,
-  roleMiddleware("admin"),
+  roleMiddleware(["admin"]),
   getAllInterviews,
 );
 
@@ -41,37 +41,37 @@ interviewRouter.get(
 // HR routes
 interviewRouter.post(
   ROUTEMAP.interviews.post,
-  roleMiddleware("hr"),
+  roleMiddleware(["hr"]),
   createInterview,
 );
 interviewRouter.post(
   ROUTEMAP.interviews.bulkSchedule,
-  roleMiddleware("hr"),
+  roleMiddleware(["hr"]),
   bulkScheduleInterviews,
 );
 interviewRouter.put(
   ROUTEMAP.interviews.put,
-  roleMiddleware("hr"),
+  roleMiddleware(["hr"]),
   updateInterview,
 );
-interviewRouter.patch(
+interviewRouter.put(
   ROUTEMAP.interviews.updateStatus,
-  roleMiddleware("hr"),
+  roleMiddleware(["hr"]),
   updateInterviewStatus,
 );
-interviewRouter.patch(
+interviewRouter.put(
   ROUTEMAP.interviews.addPreparationNotes,
-  roleMiddleware("hr"),
+  roleMiddleware(["hr"]),
   addPreparationNotes,
 );
-interviewRouter.patch(
+interviewRouter.put(
   ROUTEMAP.interviews.addFeedback,
-  roleMiddleware("hr"),
+  roleMiddleware(["hr"]),
   addFeedback,
 );
 interviewRouter.delete(
   ROUTEMAP.interviews.delete,
-  roleMiddleware("admin"),
+  roleMiddleware(["admin"]),
   deleteInterview,
 );
 

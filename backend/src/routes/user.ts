@@ -25,7 +25,7 @@ userRouter.get(ROUTEMAP.users.get, authMiddleware, getAllUsers);
 userRouter.get(
   ROUTEMAP.users.getById,
   authMiddleware,
-  roleMiddleware("admin"),
+  roleMiddleware(["admin", "hr"]),
   getUserById,
 );
 userRouter.post(ROUTEMAP.users.userLogout, userLogout);
