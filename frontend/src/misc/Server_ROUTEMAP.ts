@@ -45,7 +45,12 @@ export default {
     delete: "/:id",
   },
   interviews: {
-    _params: { id: ":id", jobId: ":jobId", candidateId: ":candidateId" },
+    _params: {
+      id: ":id",
+      jobId: ":jobId",
+      candidateId: ":candidateId",
+      applicationId: ":applicationId",
+    },
     root: "/interviews",
     get: "/",
     getById: "/:id",
@@ -81,5 +86,12 @@ export default {
     deleteHr: "/hr/:hrId",
     getAllJobs: "/jobs",
     getAllCandidates: "/candidates",
+  },
+
+  ai: {
+    root: "/ai",
+    generateDesc: "/generate-description",
+    rankCandidates: "/rank-candidates",
+    matchJobs: "/match-jobs",
   },
 } as const satisfies typeof ROUTEMAP;
