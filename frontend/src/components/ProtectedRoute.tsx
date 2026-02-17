@@ -8,7 +8,7 @@ import type { User } from "@backend/models/User";
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
-  allowedRoles?: User["role"];
+  allowedRoles?: User["role"][];
   allowLoggedInOnly?: boolean;
   allowLoggedOutOnly?: boolean;
 }
