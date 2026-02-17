@@ -1,7 +1,6 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router";
-import { ProtectedRoute } from "../../components/ProtectedRoute";
 import { DashboardLayout } from "../../components/DashboardLayout";
 import { Briefcase, Users, UserCheck, TrendingUp, Clock } from "lucide-react";
 import Client_ROUTEMAP from "../../misc/Client_ROUTEMAP";
@@ -16,7 +15,7 @@ import type { getHrUsers } from "@backend/controllers/admin";
 import type { getAllApplications } from "@backend/controllers/application";
 import type { GetRes } from "@backend/types/req-res";
 
-function AdminDashboardContent() {
+export default function AdminDashboard() {
   const { data: metrics, isLoading: isMetricsLoading } = useQuery({
     queryKey: [Server_ROUTEMAP.admin.root + Server_ROUTEMAP.admin.dashboard],
     queryFn: () =>
@@ -263,13 +262,5 @@ function AdminDashboardContent() {
         </div>
       </div>
     </DashboardLayout>
-  );
-}
-
-export default function AdminDashboard() {
-  return (
-    <ProtectedRoute allowedRoles={["admin"]} allowLoggedInOnly>
-      <AdminDashboardContent />
-    </ProtectedRoute>
   );
 }
