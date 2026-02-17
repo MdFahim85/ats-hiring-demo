@@ -1,5 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import toast from "react-hot-toast";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,17 +14,23 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Sparkles } from "lucide-react";
 
 import { useUserContext } from "@/contexts/UserContext";
 import { DashboardLayout } from "../../components/DashboardLayout";
 import { ProtectedRoute } from "../../components/ProtectedRoute";
-import { mockJobs } from "../../lib/mockData";
 import Client_ROUTEMAP from "../../misc/Client_ROUTEMAP";
+import { modifiedFetch } from "@/misc/modifiedFetch";
+import Server_ROUTEMAP from "@/misc/Server_ROUTEMAP";
+
+import type { createJob } from "@backend/controllers/job";
+import type { generateJobDescription } from "@backend/controllers/gemini";
+import type { GetReqBody, GetRes } from "@backend/types/req-res";
 
 function CreateJobContent() {
   const { user } = useUserContext();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
   const [form, setForm] = useState({
     title: "",
@@ -39,38 +47,82 @@ function CreateJobContent() {
     }));
   };
 
+  const { mutate: generateDescription, isPending: isGenerating } = useMutation({
+    mutationFn: () => {
+      return modifiedFetch<GetRes<typeof generateJobDescription>>(
+        Server_ROUTEMAP.ai.root + Server_ROUTEMAP.ai.generateDesc,
+        {
+          method: "post",
+          body: JSON.stringify({
+            title: form.title,
+            department: form.department,
+            description: form.description,
+            requirements: form.requirements,
+            deadline: new Date(form.deadline),
+          } satisfies GetReqBody<typeof createJob>),
+        },
+      );
+    },
+    onSuccess: (data) => {
+      if (data)
+        setForm((prev) => ({
+          ...prev,
+          description: data,
+        }));
+      toast.success("AI generated job description!");
+    },
+    onError: () => {
+      toast.error("Failed to generate description");
+    },
+  });
+
+  const { mutate: createJobMutation, isPending } = useMutation({
+    mutationFn: (status: "draft" | "active") => {
+      return modifiedFetch<GetRes<typeof createJob>>(
+        Server_ROUTEMAP.jobs.root + Server_ROUTEMAP.jobs.post,
+        {
+          method: "post",
+          body: JSON.stringify({
+            title: form.title,
+            department: form.department,
+            description: form.description,
+            requirements: form.requirements,
+            deadline: new Date(form.deadline),
+            status,
+            hrId: user!.id,
+          } satisfies GetReqBody<typeof createJob>),
+        },
+      );
+    },
+    onSuccess: (data, status) => {
+      if (data) toast.success(data.message);
+
+      queryClient.invalidateQueries({
+        queryKey: [Server_ROUTEMAP.jobs.root + Server_ROUTEMAP.jobs.get],
+      });
+
+      if (status === "draft") {
+        navigate(`${Client_ROUTEMAP.hr.root}/${Client_ROUTEMAP.hr.dashboard}`);
+      } else {
+        navigate(
+          `${Client_ROUTEMAP.public.root}/${Client_ROUTEMAP.public.jobDetails.replace(
+            Client_ROUTEMAP.public._params.jobId,
+            data!.data.id.toString(),
+          )}`,
+        );
+      }
+    },
+    onError: (error) => {
+      error.message?.split(",")?.forEach((msg: string) => toast.error(msg));
+    },
+  });
+
   const handleSaveDraft = () => {
-    if (!user) return;
-
-    const newJob = {
-      id: `job-${Date.now()}`,
-      ...form,
-      status: "draft" as const,
-      hrId: user.id.toString(),
-      createdAt: new Date().toISOString().split("T")[0],
-      applicantCount: 0,
-    };
-
-    mockJobs.push(newJob);
-    navigate(`${Client_ROUTEMAP.hr.root}/${Client_ROUTEMAP.hr.dashboard}`);
+    createJobMutation("draft");
   };
 
   const handlePublish = () => {
-    if (!user) return;
-
-    const newJob = {
-      id: `job-${Date.now()}`,
-      ...form,
-      status: "active" as const,
-      hrId: user.id.toString(),
-      createdAt: new Date().toISOString().split("T")[0],
-      applicantCount: 0,
-    };
-
-    mockJobs.push(newJob);
-    navigate(
-      `${Client_ROUTEMAP.public.root}/${Client_ROUTEMAP.public.jobDetails.replace(Client_ROUTEMAP.public._params.jobId, newJob.id)}`,
-    );
+    createJobMutation("active");
   };
 
   const isFormValid =
@@ -79,6 +131,9 @@ function CreateJobContent() {
     form.description &&
     form.requirements &&
     form.deadline;
+
+  const canGenerateDescription =
+    form.title && form.department && form.requirements && form.deadline;
 
   return (
     <DashboardLayout>
@@ -142,17 +197,6 @@ function CreateJobContent() {
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="description">Job Description *</Label>
-          <Textarea
-            id="description"
-            value={form.description}
-            onChange={(e) => handleChange("description", e.target.value)}
-            placeholder="Describe the role, responsibilities, and what the candidate will be working on..."
-            rows={6}
-          />
-        </div>
-
-        <div className="space-y-2">
           <Label htmlFor="requirements">Requirements *</Label>
           <Textarea
             id="requirements"
@@ -161,6 +205,27 @@ function CreateJobContent() {
             placeholder="List the required skills, experience, and qualifications."
             rows={6}
           />
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="description">Job Description *</Label>
+          <Textarea
+            id="description"
+            value={form.description}
+            onChange={(e) => handleChange("description", e.target.value)}
+            placeholder="Describe the role, responsibilities, and what the candidate will be working on..."
+            rows={6}
+          />
+          <Button
+            type="button"
+            onClick={() => generateDescription()}
+            disabled={!canGenerateDescription || isGenerating}
+            variant="outline"
+            className="whitespace-nowrap"
+          >
+            <Sparkles className="w-4 h-4 mr-2" />
+            {isGenerating ? "Generating description..." : "Generate with AI"}
+          </Button>
         </div>
 
         <div className="space-y-2">
@@ -185,13 +250,13 @@ function CreateJobContent() {
         <div className="flex items-center gap-4 pt-6 border-t border-gray-200">
           <Button
             onClick={handleSaveDraft}
-            disabled={!isFormValid}
+            disabled={!isFormValid || isPending}
             variant="outline"
           >
-            Save as Draft
+            {isPending ? "Saving..." : "Save as Draft"}
           </Button>
-          <Button onClick={handlePublish} disabled={!isFormValid}>
-            Publish Job
+          <Button onClick={handlePublish} disabled={!isFormValid || isPending}>
+            {isPending ? "Publishing..." : "Publish Job"}
           </Button>
         </div>
       </div>

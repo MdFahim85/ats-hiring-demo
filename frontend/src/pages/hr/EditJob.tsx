@@ -1,5 +1,7 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import toast from "react-hot-toast";
 
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -16,12 +18,19 @@ import { ArrowLeft } from "lucide-react";
 
 import { DashboardLayout } from "../../components/DashboardLayout";
 import { ProtectedRoute } from "../../components/ProtectedRoute";
-import { mockJobs } from "../../lib/mockData";
 import Client_ROUTEMAP from "../../misc/Client_ROUTEMAP";
+import Loading from "@/components/shared/Loading";
+import { modifiedFetch } from "@/misc/modifiedFetch";
+import Server_ROUTEMAP from "@/misc/Server_ROUTEMAP";
+
+import type { getJobById } from "@backend/controllers/job";
+import type { updateJob } from "@backend/controllers/job";
+import type { GetReqBody, GetRes } from "@backend/types/req-res";
 
 function EditJobContent() {
   const { jobId: id } = useParams<{ jobId: string }>();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
   const [form, setForm] = useState({
     title: "",
@@ -32,8 +41,21 @@ function EditJobContent() {
     status: "active" as "active" | "closed" | "draft",
   });
 
+  const { data: job, isLoading } = useQuery({
+    queryKey: [Server_ROUTEMAP.jobs.root + Server_ROUTEMAP.jobs.getById, id],
+    queryFn: () =>
+      modifiedFetch<GetRes<typeof getJobById>>(
+        Server_ROUTEMAP.jobs.root +
+          Server_ROUTEMAP.jobs.getById.replace(
+            Server_ROUTEMAP.jobs._params.id,
+            id!,
+          ),
+      ),
+    enabled: !!id,
+    retry: false,
+  });
+
   useEffect(() => {
-    const job = mockJobs.find((j) => j.id === id);
     if (job) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setForm({
@@ -41,11 +63,46 @@ function EditJobContent() {
         department: job.department,
         description: job.description,
         requirements: job.requirements,
-        deadline: job.deadline,
+        deadline: job.deadline.toISOString(),
         status: job.status,
       });
     }
-  }, [id]);
+  }, [job]);
+
+  const { mutate: updateJobMutation, isPending } = useMutation({
+    mutationFn: () => {
+      return modifiedFetch<GetRes<typeof updateJob>>(
+        Server_ROUTEMAP.jobs.root +
+          Server_ROUTEMAP.jobs.put.replace(
+            Server_ROUTEMAP.jobs._params.id,
+            id!,
+          ),
+        {
+          method: "put",
+          body: JSON.stringify({
+            title: form.title,
+            department: form.department,
+            description: form.description,
+            requirements: form.requirements,
+            deadline: new Date(form.deadline),
+            status: form.status,
+          } satisfies GetReqBody<typeof updateJob>),
+        },
+      );
+    },
+    onSuccess: (data) => {
+      if (data) toast.success(data.message);
+
+      queryClient.invalidateQueries({
+        queryKey: [Server_ROUTEMAP.jobs.root + Server_ROUTEMAP.jobs.get],
+      });
+
+      navigate(`${Client_ROUTEMAP.hr.root}/${Client_ROUTEMAP.hr.dashboard}`);
+    },
+    onError: (error) => {
+      error.message?.split(",")?.forEach((msg: string) => toast.error(msg));
+    },
+  });
 
   const handleChange = (field: string, value: string) => {
     setForm((prev) => ({
@@ -55,15 +112,10 @@ function EditJobContent() {
   };
 
   const handleSave = () => {
-    const jobIndex = mockJobs.findIndex((j) => j.id === id);
-    if (jobIndex !== -1) {
-      mockJobs[jobIndex] = {
-        ...mockJobs[jobIndex],
-        ...form,
-      };
-    }
-    navigate(`${Client_ROUTEMAP.hr.root}/${Client_ROUTEMAP.hr.dashboard}`);
+    updateJobMutation();
   };
+
+  if (isLoading) return <Loading />;
 
   const isFormValid =
     form.title &&
@@ -191,8 +243,8 @@ function EditJobContent() {
           >
             Cancel
           </Button>
-          <Button onClick={handleSave} disabled={!isFormValid}>
-            Save Changes
+          <Button onClick={handleSave} disabled={!isFormValid || isPending}>
+            {isPending ? "Saving..." : "Save Changes"}
           </Button>
         </div>
       </div>
