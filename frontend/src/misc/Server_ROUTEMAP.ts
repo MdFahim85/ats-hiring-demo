@@ -90,8 +90,17 @@ export default {
 
   ai: {
     root: "/ai",
+    chat: "/chat",
     generateDesc: "/generate-description",
     rankCandidates: "/rank-candidates",
     matchJobs: "/match-jobs",
+  },
+
+  calendar: {
+    root: "/calendar",
+    authUrl: "/auth-url",
+    callBack: "/oauth/callback",
+    status: "/status",
+    embedURL: "/embed-url",
   },
 } as const satisfies typeof ROUTEMAP;

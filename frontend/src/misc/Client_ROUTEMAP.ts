@@ -40,6 +40,7 @@ export default {
     shortListed: "jobs/:jobId/shortlisted",
     interviews: "jobs/:jobId/schedule-interviews",
     interviewDetails: "jobs/:jobId/interviews/:candidateId",
+    calendar: "calendar",
   },
 
   admin: {
