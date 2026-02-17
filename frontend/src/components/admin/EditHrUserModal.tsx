@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 import { Button } from "@/components/ui/button";
@@ -31,6 +31,11 @@ export function EditHRUserModal({ hrId }: { hrId: number }) {
 
   const [modalOpen, setModalOpen] = useState(false);
 
+  const [formData, setFormData] = useState({
+    name: "",
+    department: "",
+  });
+
   const { data: hrUser } = useQuery({
     queryKey: [
       Server_ROUTEMAP.admin.root + Server_ROUTEMAP.admin.getHrById,
@@ -44,13 +49,19 @@ export function EditHRUserModal({ hrId }: { hrId: number }) {
             hrId.toString(),
           ),
       ),
+    enabled: modalOpen && !!hrId,
     retry: false,
   });
 
-  const [formData, setFormData] = useState({
-    name: hrUser?.name ?? "",
-    department: hrUser?.department ?? "",
-  });
+  useEffect(() => {
+    if (hrUser) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setFormData({
+        name: hrUser.name,
+        department: hrUser.department || "",
+      });
+    }
+  }, [hrUser]);
 
   const { mutate: updateHRUser, isPending } = useMutation({
     mutationFn: () => {

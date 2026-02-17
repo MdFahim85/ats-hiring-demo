@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ChangeEventHandler } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 import { Button } from "@/components/ui/button";
@@ -24,6 +24,7 @@ import Server_ROUTEMAP from "@/misc/Server_ROUTEMAP";
 
 import type { createHr } from "@backend/controllers/admin";
 import type { GetReqBody, GetRes } from "@backend/types/req-res";
+import type { User } from "@backend/models/User";
 
 const initialHRUserState = {
   name: "",
@@ -41,6 +42,22 @@ export function AddHRUserModal() {
   const queryClient = useQueryClient();
   const [modalOpen, setModalOpen] = useState(false);
   const [formData, setFormData] = useState(initialHRUserState);
+
+  const onChange: ChangeEventHandler<HTMLInputElement> = ({
+    target: { id, value },
+  }) => {
+    setFormData((prev) => ({ ...prev, [id]: value }));
+  };
+
+  const onSelectChange = (id: string) => (value: string) =>
+    setFormData((user) => ({
+      ...user,
+      [id]: (
+        ["id"] satisfies KeyOfObjectOfType<User, number>[] as string[]
+      ).includes(id)
+        ? parseInt(value)
+        : value,
+    }));
 
   const { mutate: createHRUser, isPending } = useMutation({
     mutationFn: () => {
@@ -67,10 +84,6 @@ export function AddHRUserModal() {
     },
   });
 
-  const handleSave = () => {
-    createHRUser();
-  };
-
   return (
     <Dialog open={modalOpen} onOpenChange={setModalOpen}>
       <DialogTrigger asChild>
@@ -87,67 +100,81 @@ export function AddHRUserModal() {
         <div className="space-y-4 mt-2">
           {/* Name */}
           <div className="space-y-2">
-            <Label htmlFor="name">Full Name *</Label>
-            <Input
-              id="name"
-              value={formData.name}
-              onChange={(e) =>
-                setFormData((prev) => ({ ...prev, name: e.target.value }))
-              }
-              placeholder="John Doe"
-            />
+            {(["name"] satisfies KeyOfObjectOfType<User, string>[]).map((k) => (
+              <>
+                <Label htmlFor={k}>Full Name *</Label>
+                <Input
+                  id={k}
+                  value={formData.name}
+                  onChange={onChange}
+                  placeholder="John Doe"
+                />
+              </>
+            ))}
           </div>
 
           {/* Email */}
           <div className="space-y-2">
-            <Label htmlFor="email">Email Address *</Label>
-            <Input
-              id="email"
-              type="email"
-              value={formData.email}
-              onChange={(e) =>
-                setFormData((prev) => ({ ...prev, email: e.target.value }))
-              }
-              placeholder="john@company.com"
-            />
+            {(["email"] satisfies KeyOfObjectOfType<User, string>[]).map(
+              (k) => (
+                <>
+                  <Label htmlFor={k}>Email Address *</Label>
+                  <Input
+                    id={k}
+                    type="email"
+                    value={formData.email}
+                    onChange={onChange}
+                    placeholder="john@company.com"
+                  />
+                </>
+              ),
+            )}
           </div>
 
           {/* Password */}
           <div className="space-y-2">
-            <Label htmlFor="password">Password *</Label>
-            <Input
-              id="password"
-              type="password"
-              value={formData.password}
-              onChange={(e) =>
-                setFormData((prev) => ({ ...prev, password: e.target.value }))
-              }
-              placeholder="********"
-            />
+            {(["password"] satisfies KeyOfObjectOfType<User, string>[]).map(
+              (k) => (
+                <>
+                  <Label htmlFor={k}>Password *</Label>
+                  <Input
+                    id={k}
+                    type="password"
+                    value={formData.password}
+                    onChange={onChange}
+                    placeholder="********"
+                  />
+                </>
+              ),
+            )}
           </div>
 
           {/* Department */}
           <div className="space-y-2">
-            <Label htmlFor="department">Department *</Label>
-            <Select
-              value={formData.department}
-              onValueChange={(value: string) =>
-                setFormData((prev) => ({ ...prev, department: value }))
-              }
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Select a department" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="Engineering">Engineering</SelectItem>
-                <SelectItem value="Design">Design</SelectItem>
-                <SelectItem value="Marketing">Marketing</SelectItem>
-                <SelectItem value="Sales">Sales</SelectItem>
-                <SelectItem value="Product">Product</SelectItem>
-                <SelectItem value="Analytics">Analytics</SelectItem>
-                <SelectItem value="Operations">Operations</SelectItem>
-              </SelectContent>
-            </Select>
+            {(
+              ["department"] satisfies KeyOfObjectOfType<User, string | null>[]
+            ).map((k) => (
+              <>
+                <Label htmlFor={k}>Department *</Label>
+                <Select
+                  value={formData.department}
+                  onValueChange={onSelectChange(k)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select a department" />
+                  </SelectTrigger>
+                  <SelectContent id={k}>
+                    <SelectItem value="Engineering">Engineering</SelectItem>
+                    <SelectItem value="Design">Design</SelectItem>
+                    <SelectItem value="Marketing">Marketing</SelectItem>
+                    <SelectItem value="Sales">Sales</SelectItem>
+                    <SelectItem value="Product">Product</SelectItem>
+                    <SelectItem value="Analytics">Analytics</SelectItem>
+                    <SelectItem value="Operations">Operations</SelectItem>
+                  </SelectContent>
+                </Select>
+              </>
+            ))}
           </div>
 
           {/* Actions */}
@@ -160,7 +187,7 @@ export function AddHRUserModal() {
               Cancel
             </Button>
             <Button
-              onClick={handleSave}
+              onClick={() => createHRUser()}
               disabled={
                 !formData.name ||
                 !formData.email ||
