@@ -1,24 +1,4 @@
-import { useParams, useNavigate, Link } from "react-router";
-import { useMemo, useState } from "react";
-import { ProtectedRoute } from "../../components/ProtectedRoute";
-import { DashboardLayout } from "../../components/DashboardLayout";
-import {
-  mockJobs,
-  mockApplications,
-  mockUsers,
-  mockInterviews,
-} from "../../lib/mockData";
-import {
-  ArrowLeft,
-  ArrowRight,
-  Calendar,
-  User as UserIcon,
-  Users,
-} from "lucide-react";
-import type { InterviewStatus } from "../../types";
-
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { useQuery } from "@tanstack/react-query";
 import {
   createColumnHelper,
   flexRender,
@@ -26,6 +6,11 @@ import {
   getPaginationRowModel,
   useReactTable,
 } from "@tanstack/react-table";
+import { useMemo, useState } from "react";
+import { Link, useNavigate, useParams } from "react-router";
+
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   Table,
   TableBody,
@@ -33,23 +18,64 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  ArrowLeft,
+  ArrowRight,
+  Calendar,
+  User as UserIcon,
+  Users,
+} from "lucide-react";
+
+import Loading from "@/components/shared/Loading";
 import { getPageRange } from "@/misc";
 import Client_ROUTEMAP from "@/misc/Client_ROUTEMAP";
+import { API_URL, modifiedFetch } from "@/misc/modifiedFetch";
+import Server_ROUTEMAP from "@/misc/Server_ROUTEMAP";
+import { DashboardLayout } from "../../components/DashboardLayout";
+import { ProtectedRoute } from "../../components/ProtectedRoute";
 
-const columnHelper = createColumnHelper<any>();
+import type { getApplicationsByJobId } from "@backend/controllers/application";
+import type { getInterviewsByJobId } from "@backend/controllers/interview";
+import type { getJobById } from "@backend/controllers/job";
+import type { getUserById } from "@backend/controllers/user";
+import type { Application } from "@backend/models/Application";
+import type { Interview } from "@backend/models/Interview";
+import type { UserWithOutPassword } from "@backend/models/User";
+import type { GetRes } from "@backend/types/req-res";
 
-function ShortlistedTable({ data, jobId }: { data: any[]; jobId: string }) {
+type ShortlistedWithDetails = Application & {
+  candidate?: UserWithOutPassword;
+  interview?: Interview;
+  interviewStatus: Interview["status"];
+};
+
+const columnHelper = createColumnHelper<ShortlistedWithDetails>();
+
+function ShortlistedTable({
+  data,
+  jobId,
+}: {
+  data: ShortlistedWithDetails[];
+  jobId: string;
+}) {
   const columns = useMemo(
     () => [
       columnHelper.accessor("candidate", {
         header: "Candidate",
         cell: (info) => {
           const candidate = info.getValue();
+          if (!candidate) return null;
           return (
             <div className="flex items-center gap-3">
               {candidate.profilePicture ? (
                 <img
-                  src={candidate.profilePicture}
+                  src={
+                    API_URL +
+                    Server_ROUTEMAP.uploads.root +
+                    Server_ROUTEMAP.uploads.images +
+                    "/" +
+                    candidate.profilePicture
+                  }
                   alt={candidate.name}
                   className="w-10 h-10 rounded-full object-cover"
                 />
@@ -87,7 +113,7 @@ function ShortlistedTable({ data, jobId }: { data: any[]; jobId: string }) {
               <Link
                 to={
                   row.interview
-                    ? `/hr/jobs/${jobId}/interviews/${row.candidate.id}`
+                    ? `/hr/jobs/${jobId}/interviews/${row.candidateId}`
                     : `/hr/jobs/${jobId}/schedule-interviews`
                 }
                 className="px-3 py-1.5 text-sm text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
@@ -198,27 +224,105 @@ function ShortlistedCandidatesContent() {
   const { jobId } = useParams<{ jobId: string }>();
   const navigate = useNavigate();
   const [interviewFilter, setInterviewFilter] = useState<
-    "all" | InterviewStatus
+    "all" | Interview["status"]
   >("all");
 
-  const job = mockJobs.find((j) => j.id === jobId);
+  const { data: job, isLoading: isJobLoading } = useQuery({
+    queryKey: [Server_ROUTEMAP.jobs.root + Server_ROUTEMAP.jobs.getById, jobId],
+    queryFn: () =>
+      modifiedFetch<GetRes<typeof getJobById>>(
+        Server_ROUTEMAP.jobs.root +
+          Server_ROUTEMAP.jobs.getById.replace(
+            Server_ROUTEMAP.jobs._params.id,
+            jobId!,
+          ),
+      ),
+    enabled: !!jobId,
+    retry: false,
+  });
+
+  const { data: interviews } = useQuery({
+    queryKey: [
+      Server_ROUTEMAP.interviews.root + Server_ROUTEMAP.interviews.getByJob,
+      jobId,
+    ],
+    queryFn: () =>
+      modifiedFetch<GetRes<typeof getInterviewsByJobId>>(
+        Server_ROUTEMAP.interviews.root +
+          Server_ROUTEMAP.interviews.getByJob.replace(
+            Server_ROUTEMAP.interviews._params.jobId,
+            jobId!,
+          ),
+      ),
+    enabled: !!jobId,
+    retry: false,
+  });
+
+  const { data: applications, isLoading: isApplicationsLoading } = useQuery({
+    queryKey: [
+      Server_ROUTEMAP.applications.root + Server_ROUTEMAP.applications.getByJob,
+      jobId,
+    ],
+    queryFn: () =>
+      modifiedFetch<GetRes<typeof getApplicationsByJobId>>(
+        Server_ROUTEMAP.applications.root +
+          Server_ROUTEMAP.applications.getByJob.replace(
+            Server_ROUTEMAP.applications._params.jobId,
+            jobId!,
+          ),
+      ),
+    enabled: !!jobId,
+    retry: false,
+  });
+
+  // Filter for shortlisted applications
+  const shortlistedApplications = useMemo(() => {
+    return (
+      applications?.filter(
+        (app) => app.status === "shortlisted" || app.status === "interview",
+      ) || []
+    );
+  }, [applications]);
+
+  const { data: candidates } = useQuery({
+    queryKey: [
+      Server_ROUTEMAP.users.root + Server_ROUTEMAP.users.getById,
+      shortlistedApplications?.map((a) => a.candidateId),
+    ],
+    queryFn: async () => {
+      const candidateIds =
+        shortlistedApplications?.map((a) => a.candidateId) || [];
+      if (candidateIds.length === 0) return [];
+
+      const candidatePromises = candidateIds.map((id) =>
+        modifiedFetch<GetRes<typeof getUserById>>(
+          Server_ROUTEMAP.users.root +
+            Server_ROUTEMAP.users.getById.replace(
+              Server_ROUTEMAP.users._params.id,
+              id.toString(),
+            ),
+        ),
+      );
+
+      return await Promise.all(candidatePromises);
+    },
+    enabled: shortlistedApplications.length > 0,
+    retry: false,
+  });
 
   const shortlistedCandidates = useMemo(() => {
-    if (!job) return [];
+    if (!shortlistedApplications || !candidates) return [];
 
-    return mockApplications
-      .filter((app) => app.jobId === job.id && app.status === "shortlisted")
+    return shortlistedApplications
       .map((app) => {
-        const candidate = mockUsers.find((u) => u.id === app.candidateId);
-        const interview = mockInterviews.find(
-          (i) => i.applicationId === app.id,
-        );
+        const candidate = candidates.find((c) => c!.id === app.candidateId);
+        const interview = interviews?.find((i) => i.applicationId === app.id);
 
         return {
           ...app,
           candidate,
           interview,
-          interviewStatus: interview?.status || "not_scheduled",
+          interviewStatus: interview?.status as Interview["status"],
         };
       })
       .filter(
@@ -229,7 +333,9 @@ function ShortlistedCandidatesContent() {
         (a, b) =>
           new Date(a.appliedAt).getTime() - new Date(b.appliedAt).getTime(),
       );
-  }, [job, interviewFilter]);
+  }, [shortlistedApplications, candidates, interviews, interviewFilter]);
+
+  if (isJobLoading || isApplicationsLoading) return <Loading />;
 
   if (!job) {
     return (
@@ -264,15 +370,13 @@ function ShortlistedCandidatesContent() {
             </p>
           </div>
 
-          {shortlistedCandidates.length > 0 && (
-            <Link
-              to={`/hr/jobs/${jobId}/schedule-interviews`}
-              className="flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-            >
-              <Calendar className="w-5 h-5" />
-              Schedule Interviews
-            </Link>
-          )}
+          <Link
+            to={`/hr/jobs/${jobId}/schedule-interviews`}
+            className="flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+          >
+            <Calendar className="w-5 h-5" />
+            Schedule Interviews
+          </Link>
         </div>
       </div>
 
@@ -320,7 +424,7 @@ function ShortlistedCandidatesContent() {
               : `No candidates with "${interviewFilter.replace("_", " ")}" status`}
           </p>
           <Link
-            to={`${Client_ROUTEMAP.hr.root}/${Client_ROUTEMAP.hr.applicants.replace(Client_ROUTEMAP.hr._params.jobId, job.id)}`}
+            to={`${Client_ROUTEMAP.hr.root}/${Client_ROUTEMAP.hr.applicants.replace(Client_ROUTEMAP.hr._params.jobId, job.id.toString())}`}
             className="inline-block px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
           >
             View All Applicants
