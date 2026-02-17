@@ -19,6 +19,7 @@ declare global {
       PORT?: string | undefined;
       JWT_SECRET: string;
       FRONTEND_API: string;
+      GEMINI_API_KEY: string;
     }
   }
 
