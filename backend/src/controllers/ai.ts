@@ -1,17 +1,23 @@
 // controllers/ai.ts
 import { RequestHandler } from "express";
 import fs from "fs/promises";
+import status from "http-status";
 import path from "path";
 
-import { AIService } from "../utils/geminiService";
+import config from "../config";
 import ApplicationModel from "../models/Application";
 import JobModel, { addJobSchema, Job } from "../models/Job";
 import UserModel from "../models/User";
-import config from "../config";
 import ResponseError from "../utils/ResponseError";
-import status from "http-status";
+import { AIService } from "../utils/groqAtsService";
+import {
+  ChatContext,
+  ChatMessage,
+  GroqService,
+} from "../utils/groqChatService";
 
 const aiService = new AIService();
+const groqService = new GroqService();
 
 // HR TASK 1: Generate job description from input
 export const generateJobDescription: RequestHandler<
@@ -184,16 +190,31 @@ export const rankCandidatesForJob: RequestHandler<
 };
 
 // CANDIDATE TASK: Find matching jobs
-export const findMatchingJobs: RequestHandler = async (req, res) => {
+export const findMatchingJobs: RequestHandler<
+  {},
+  {
+    jobId: number;
+    title: string;
+    matchScore: number;
+    matchReason: string;
+    missingSkills: string[];
+  }[]
+> = async (req, res) => {
   try {
     const user = req.user!;
 
     if (user.role !== "candidate") {
-      return res.status(403).json({ message: "Candidates only" });
+      throw new ResponseError(
+        "You dont have the permission",
+        status.UNAUTHORIZED,
+      );
     }
 
     if (!user.cvUrl) {
-      return res.status(400).json({ message: "Please upload your CV first" });
+      throw new ResponseError(
+        "Please upload your CV first",
+        status.UNSUPPORTED_MEDIA_TYPE,
+      );
     }
 
     // Read candidate's CV
@@ -211,11 +232,10 @@ export const findMatchingJobs: RequestHandler = async (req, res) => {
     const activeJobs = allJobs.filter((j) => j.status === "active");
 
     if (activeJobs.length === 0) {
-      return res.json({
-        success: true,
-        data: { matchedJobs: [] },
-        message: "No active jobs available at the moment",
-      });
+      throw new ResponseError(
+        "No active jobs available at the moment",
+        status.NOT_FOUND,
+      );
     }
 
     // Find matching jobs using AI
@@ -230,12 +250,69 @@ export const findMatchingJobs: RequestHandler = async (req, res) => {
       })),
     );
 
-    res.json({
-      success: true,
-      data: matches,
-    });
+    res.json(matches.matchedJobs);
   } catch (error) {
     console.error("Find matching jobs error:", error);
-    res.status(500).json({ message: "Failed to find matching jobs" });
+    throw new ResponseError(
+      "Failed to find matching jobs",
+      status.INTERNAL_SERVER_ERROR,
+    );
+  }
+};
+
+// CHAT
+export const chat: RequestHandler<
+  {},
+  string,
+  { message: string; history?: ChatMessage[] }
+> = async (req, res) => {
+  try {
+    const { message, history = [] } = req.body;
+    const user = req.user!;
+
+    if (!message || message.trim().length === 0) {
+      throw new ResponseError("Please provide a message", status.NO_CONTENT);
+    }
+
+    // Build context
+    const context: ChatContext = {
+      role: user.role,
+      userId: user.id,
+      userName: user.name,
+      userEmail: user.email,
+    };
+
+    // Add applications for candidates
+    if (user.role === "candidate") {
+      try {
+        const applications =
+          await ApplicationModel.getApplicationsByCandidateId(user.id);
+        context.applications = applications;
+      } catch (error) {
+        console.error("Failed to fetch applications:", error);
+        context.applications = [];
+      }
+    }
+
+    // Add jobs for HR
+    if (user.role === "hr") {
+      try {
+        const jobs = await JobModel.getJobsByHrId(user.id);
+        context.jobs = jobs;
+      } catch (error) {
+        console.error("Failed to fetch jobs:", error);
+        context.jobs = [];
+      }
+    }
+
+    const reply = await groqService.chat(message, context, history);
+
+    res.json(reply);
+  } catch (error) {
+    console.error("Chat error:", error);
+    throw new ResponseError(
+      "Sorry, I have encountered an error. Try again later",
+      status.INTERNAL_SERVER_ERROR,
+    );
   }
 };
