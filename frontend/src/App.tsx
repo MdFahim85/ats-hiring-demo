@@ -2,6 +2,7 @@ import { BrowserRouter } from "react-router";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { UserContextProvider } from "./contexts/UserContext";
 import RouteComponent from "./RouteComponent";
+import { Toaster } from "react-hot-toast";
 
 export default function App() {
   const queryClient = new QueryClient();
@@ -10,6 +11,7 @@ export default function App() {
       <UserContextProvider>
         <BrowserRouter>
           <RouteComponent />
+          <Toaster position="top-right" reverseOrder={false} />
         </BrowserRouter>
       </UserContextProvider>
     </QueryClientProvider>
