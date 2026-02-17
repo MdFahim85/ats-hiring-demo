@@ -33,6 +33,8 @@ export const user = pgTable("users", {
   })
     .notNull()
     .defaultNow(),
+  googleAccessToken: text("google_access_token"),
+  googleRefreshToken: text("google_refresh_token"),
 });
 
 // User Schema Validators
@@ -47,6 +49,8 @@ export const addUserSchema = createInsertSchema(user, {
   cvUrl: (schema) => schema.nullable(),
   status: () => z.enum(["active", "closed"]),
   createdAt: (schema) => schema.transform(() => undefined),
+  googleAccessToken: (schema) => schema.nullable().transform(() => null),
+  googleRefreshToken: (schema) => schema.nullable().transform(() => null),
 });
 
 export const updateUserSchema = createUpdateSchema(user, {

@@ -66,6 +66,7 @@ export const interview = pgTable("interviews", {
   })
     .notNull()
     .defaultNow(),
+  calendarEventId: text("calendar_event_id"),
 });
 
 export const addInterviewSchema = createInsertSchema(interview, {
@@ -84,6 +85,7 @@ export const addInterviewSchema = createInsertSchema(interview, {
   rating: (schema) => schema.nullable(),
   result: () => z.enum(["pending", "passed", "failed"]).nullable(),
   createdAt: (schema) => schema.transform(() => undefined),
+  calendarEventId: (schema) => schema.nullable().transform(() => null),
 });
 
 export const updateInterviewSchema = createUpdateSchema(interview, {

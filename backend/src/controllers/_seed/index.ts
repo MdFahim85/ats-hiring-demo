@@ -46,6 +46,8 @@ const makeUser = async () => {
     cvUrl: faker.internet.url(),
     status: "active",
     createdAt: new Date(),
+    googleAccessToken: null,
+    googleRefreshToken: null,
   } satisfies User);
 
   const result = await UserModel.addUser(user);
@@ -145,6 +147,7 @@ const makeInterview = async () => {
     rating: faker.number.int({ min: 1, max: 5 }),
     result: faker.helpers.arrayElement(["pending", "passed", "failed"]),
     createdAt: new Date(),
+    calendarEventId: null,
   } satisfies Interview);
 
   const result = await InterviewModel.addInterview(interview);

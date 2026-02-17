@@ -15,6 +15,13 @@
       "when": 1771079497320,
       "tag": "0001_add_all_tables",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1771310394296,
+      "tag": "0002_UserTableAndInterviewTableColumn",
+      "breakpoints": true
     }
   ]
 }
