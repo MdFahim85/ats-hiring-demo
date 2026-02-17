@@ -160,15 +160,48 @@ export default function Login() {
           {/* Demo credentials */}
           <div className="mt-6 p-4 bg-blue-50 rounded-lg space-y-2 text-xs">
             <p className="text-blue-900 font-semibold">Demo Credentials:</p>
-            <div className="space-y-4 pt-4 text-lg">
+            <div className="space-y-4 pt-4 text-lg flex gap-4">
               <p className="text-blue-700">
-                <strong>Candidate:</strong> john.doe@example.com | password123
+                <Button
+                  className="bg-blue-600"
+                  onClick={() =>
+                    setUserData((prev) => ({
+                      ...prev,
+                      email: "john.doe@example.com",
+                      password: "password123",
+                    }))
+                  }
+                >
+                  <strong>Candidate</strong>
+                </Button>
               </p>
               <p className="text-blue-700">
-                <strong>HR:</strong> sarah.hr@company.com | password123
+                <Button
+                  className="bg-blue-600"
+                  onClick={() =>
+                    setUserData((prev) => ({
+                      ...prev,
+                      email: "sarah.hr@company.com",
+                      password: "password123",
+                    }))
+                  }
+                >
+                  <strong>HR</strong>
+                </Button>
               </p>
               <p className="text-blue-700">
-                <strong>Admin:</strong> admin@test.com | password123
+                <Button
+                  className="bg-blue-600"
+                  onClick={() =>
+                    setUserData((prev) => ({
+                      ...prev,
+                      email: "admin@test.com",
+                      password: "password123",
+                    }))
+                  }
+                >
+                  <strong>Admin</strong>
+                </Button>
               </p>
             </div>
           </div>
