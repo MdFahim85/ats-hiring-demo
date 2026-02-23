@@ -240,8 +240,6 @@ function HRDashboardContent() {
     retry: false,
   });
 
-  console.log(jobs, applications);
-
   const jobsWithCount = useMemo(() => {
     if (!jobs || !applications || !user) return [];
 

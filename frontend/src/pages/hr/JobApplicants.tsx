@@ -479,7 +479,7 @@ function JobApplicantsContent() {
           ))}
         </CardContent>
       </Card>
-      <p className="py-4">
+      <p className={`${candidates?.length === 0 ? "hidden" : ""} py-4`}>
         <RankedCandidates jobId={job.id} />
       </p>
 

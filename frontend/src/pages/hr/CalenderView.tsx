@@ -68,6 +68,7 @@ function CalendarViewContent() {
           </p>
           <Button
             onClick={() => navigate(-1)}
+            variant={"ghost"}
             className="group text-muted-foreground hover:text-foreground"
           >
             <span className="mr-2 transition-transform group-hover:-translate-x-1">

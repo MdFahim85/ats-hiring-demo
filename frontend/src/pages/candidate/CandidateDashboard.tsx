@@ -124,7 +124,7 @@ function CandidateDashboardContent() {
           </div>
           <Button
             onClick={() => setShowMatches(true)}
-            disabled={isMatchLoading}
+            disabled={isMatchLoading || !jobs?.length}
           >
             <Sparkles className="w-4 h-4 mr-2" />
             {isMatchLoading ? "Finding..." : "Find My Matches"}
@@ -132,7 +132,7 @@ function CandidateDashboardContent() {
         </div>
       </div>
 
-      {showMatches && matchedJobs && (
+      {showMatches && matchedJobs?.length && (
         <div className="mb-6">
           <h2 className="text-xl font-semibold mb-4">Your Best Matches</h2>
           <div className="space-y-3">
