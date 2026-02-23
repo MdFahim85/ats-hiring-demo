@@ -11,7 +11,12 @@ import ResponseError from "./utils/ResponseError";
 const app = express();
 
 // Configuring app
-app.use(cors({ origin: env.frontend_API, credentials: true }));
+// app.use(
+//   cors({
+//     origin: [env.frontend_API, "https://d1234abcd.cloudfront.net"],
+//     credentials: true,
+//   }),
+// );
 app.use(cookieParser());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));

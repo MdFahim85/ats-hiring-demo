@@ -56,7 +56,10 @@ export const userLogout: RequestHandler<{}, { message: string }> = async (
   _,
   res,
 ) => {
-  res.clearCookie(jwtToken);
+  res.clearCookie(jwtToken, {
+    secure: env.isProduction,
+    sameSite: "none",
+  });
   res.json({ message: "Logout successful" });
 };
 
@@ -78,7 +81,7 @@ export const userLogin: RequestHandler<
   const token = generateAccessToken(user.id);
   res.cookie(jwtToken, token, {
     maxAge: 7 * 24 * 60 * 60 * 1000,
-    sameSite: "lax",
+    sameSite: "none",
     secure: env.isProduction,
   });
 
@@ -156,7 +159,7 @@ export const userRegister: RequestHandler<
   const token = generateAccessToken(user.id);
   res.cookie(jwtToken, token, {
     maxAge: 7 * 24 * 60 * 60 * 1000,
-    sameSite: "lax",
+    sameSite: "none",
     secure: env.isProduction,
   });
 

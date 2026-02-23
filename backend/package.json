@@ -7,7 +7,9 @@
     "migrate:generate": "npx drizzle-kit generate",
     "migrate:up": "npx drizzle-kit migrate",
     "watch": "nodemon -w src -e ts --exec \"tsc && node dist/\"",
-    "watch:debug": "nodemon -w src -e ts --exec \"tsc && node --inspect-brk dist/\""
+    "watch:debug": "nodemon -w src -e ts --exec \"tsc && node --inspect-brk dist/\"",
+    "build": "tsc",
+    "start": "node dist/index.js"
   },
   "author": "",
   "license": "ISC",

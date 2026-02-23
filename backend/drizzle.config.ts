@@ -11,7 +11,7 @@ export default defineConfig({
     user: env.dbUser,
     password: env.dbPassword,
     database: env.dbName,
-    ssl: false,
+    ssl: { rejectUnauthorized: false },
   },
   migrations: {
     table: "Sentinel_Migrations",

@@ -9,6 +9,9 @@ export const pool = new Pool({
   password: env.dbPassword,
   host: env.dbHost,
   port: env.dbPort,
+  ssl: {
+    rejectUnauthorized: false,
+  },
 });
 
 export const db = drizzle(pool);
